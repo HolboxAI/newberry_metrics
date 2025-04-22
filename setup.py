@@ -5,7 +5,7 @@ with open("README.md", "r") as f:
 
 setup(
     name="newberry_metrics",
-    version="0.0.20",
+    version="0.0.30",
     description="A model evaluation tool",
     packages=find_packages(),
     long_description=long_description,

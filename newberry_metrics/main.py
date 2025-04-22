@@ -13,7 +13,7 @@ def estimate_tokens(text):
     return max(1, len(text) // 4)
 
 # --- Function 1: Get cost per million input tokens for a model ---
-def cost_per_million_tokens(model):
+def model_cost(model):
     model_key = model.strip().lower()
     if model_key not in MODEL_PRICING:
         raise ValueError(f"Unknown model: {model}")
@@ -54,8 +54,8 @@ def session_cost(session_id, prompt, model="nova micro"):
 
 # --- test section ---
 if __name__ == "__main__":
-    print("Model Cost (Nova):", cost_per_million_tokens("Nova Micro"))
-    print("Model Cost (Claude):", cost_per_million_tokens("Claude 3.7 Sonnet"))
+    print("Model Cost (Nova):", model_cost("Nova Micro"))
+    print("Model Cost (Claude):", model_cost("Claude 3.7 Sonnet"))
 
     prompt = "What is the weather in San Francisco"
     print("Prompt Cost:", prompt_cost(prompt))
