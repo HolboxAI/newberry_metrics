@@ -1,2 +1,2 @@
 def cost():
-    return ("3.5 per million tokens")
+    return ("3.6 per million tokens")
