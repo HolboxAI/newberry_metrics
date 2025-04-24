@@ -10,9 +10,13 @@ A Python package for tracking and estimating AI model token costs and usage metr
 - Model cost calculation per million tokens
 - Prompt cost estimation
 - Session-based cost tracking
-- Support for multiple AI models:
-  - Claude 3.7 Sonnet
-  - Nova Micro
+- Support for multiple AI models from bedrock:
+  - Amazon Nova Pro
+  - Amazon Nova Micro
+  - Claude 3 Sonnet
+  - Claude 3 Haiku
+  - Llama2 13B
+  - Llama2 70B
 
 ## Installation
 
@@ -59,6 +63,19 @@ print(f"Answer: {result['answer']}")
 session_id = "session_1"
 session_info = estimator.track_session_cost(session_id, response)
 print(f"Cumulative session cost: ${session_info['session_cost']}")
+print(f"Current query cost: ${session_info['current_cost']}")
+```
+
+- **Session Management**
+```python
+# Get cost for a specific session
+session_cost = estimator.get_session_cost("session_1")
+
+# Reset cost for a specific session
+estimator.reset_session_cost("session_1")
+
+# Reset all session costs
+estimator.reset_all_session_costs()
 ```
 
 ## Technical Details
@@ -67,15 +84,16 @@ print(f"Cumulative session cost: ${session_info['session_cost']}")
 ## Recent Updates (v0.1.0)
 
 ### New Features
-- Introduced class-based `TokenEstimator` API replacing standalone functions.
-- Amazon Bedrock integration for real-time answers and token usage.
-- Separate input/output token cost calculation with configurable model pricing.
-- AWS credentials and region now provided at initialization.
+- Separated AWS API invocation from response processing
+- Improved response handling and error management
+- Added session management functions
+- Enhanced cost tracking with separate input/output calculations
 
 ### Technical Improvements
-- Improved code organization and maintainability with data classes and type hints.
-- Detailed response parsing and error handling for unconventional formats.
-- Session-based cost accumulation supports multi-prompt workflows.
+- Better code organization with separate response processing
+- Improved error handling for API responses
+- More efficient session cost tracking
+- Better separation of concerns in the codebase
 
 ## Requirements
 - Python >= 3.10
