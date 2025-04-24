@@ -1,76 +1,91 @@
 # Newberry Metrics
 
-A Python package for model evaluation that provides tools and utilities to assess machine learning model performance.
+A Python package for tracking and estimating AI model token costs and usage metrics.
 
-## Description
+## Latest Version: 0.0.10
 
-Newberry Metrics is a lightweight and efficient tool designed to help data scientists and machine learning engineers evaluate their models. It provides a suite of metrics and evaluation tools to assess model performance.
+## Features
+
+### Cost Tracking and Estimation
+- Model cost calculation per million tokens
+- Prompt cost estimation
+- Session-based cost tracking
+- Support for multiple AI models:
+  - Claude 3.7 Sonnet
+  - Nova Micro
 
 ## Installation
-
-You can install the package using pip:
 
 ```bash
 pip install newberry_metrics
 ```
 
-## Requirements
+## Usage Examples
 
+### Calculate Model Cost
+```python
+from newberry_metrics import model_cost
+
+# Get cost per million tokens for Nova Micro
+nova_cost = model_cost("nova micro")
+print(f"Nova Micro cost per million tokens: ${nova_cost}")
+
+# Get cost for Claude 3.7 Sonnet
+claude_cost = model_cost("claude 3.7 sonnet")
+print(f"Claude 3.7 Sonnet cost per million tokens: ${claude_cost}")
+```
+
+### Estimate Prompt Cost
+```python
+from newberry_metrics import prompt_cost
+
+prompt = "What is the weather in San Francisco?"
+cost = prompt_cost(prompt, model="nova micro")
+print(f"Estimated prompt cost: ${cost}")
+```
+
+### Track Session Costs
+```python
+from newberry_metrics import session_cost
+
+# Track costs across multiple prompts in a session
+session_id = "session_1"
+cost1 = session_cost(session_id, "First prompt", model="nova micro")
+cost2 = session_cost(session_id, "Second prompt", model="nova micro")
+print(f"Total session cost: ${cost2}")  # Shows cumulative cost
+```
+
+## Technical Details
+
+### Token Estimation
+- Uses a simple 4 characters per token estimation rule
+- Provides conservative estimates for cost calculation
+- Supports both input and output token cost calculation
+
+## Recent Updates (v0.0.10)
+
+### New Features
+- Implemented basic token cost estimation
+- Added support for Claude 3.7 Sonnet and Nova Micro models
+- Introduced session-based cost tracking
+- Added utility functions for cost estimation
+
+### Technical Improvements
+- Simple token estimation algorithm
+- Session cost persistence during runtime
+- Model pricing configuration system
+
+## Requirements
 - Python >= 3.10
 
-## Features
-
-- Model evaluation tools
-- Performance metrics calculation
-- Easy-to-use interface
-
-## Usage
-
-```python
-from newberry_metrics import cost
-
-# Example usage will be added here
-```
-
-## Development
-
-To set up the development environment:
-
-1. Clone the repository
-```bash
-git clone https://github.com/SatyaTheG/newberry_metrics.git
-cd newberry_metrics
-```
-
-2. Create and activate a virtual environment
-```bash
-python -m venv .venv
-source .venv/bin/activate  # On Windows, use: .venv\Scripts\activate
-```
-
-3. Install development dependencies
-```bash
-pip install -e ".[dev]"
-```
-
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+## Contact & Support
+- **Developer**: Satya-Holbox, Harshika-Holbox
+- **Email**: satyanarayan@holbox.ai
+- **GitHub**: [SatyaTheG](https://github.com/SatyaTheG)
 
 ## License
+This project is licensed under the MIT License.
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+---
 
-## Author
-
-- **Satya** - [SatyaTheG](https://github.com/SatyaTheG)
-- Email: forsatyanarayansahoo@gmail.com
-
-## Version
-
-Current version: 0.0.10
-
-## Project Status
-
-This project is under active development. Features and documentation will be added regularly. 
+**Note**: This package is actively maintained and regularly updated with new features and model support.
