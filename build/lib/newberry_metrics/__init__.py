@@ -1,3 +1,6 @@
-from .main import model_cost, prompt_cost, session_cost
+try:
+    from .main import TokenEstimator
+except ImportError:
+    from main import TokenEstimator
 
-__all__ = ["model_cost", "prompt_cost", "session_cost"]
+__all__ = ["TokenEstimator"]
