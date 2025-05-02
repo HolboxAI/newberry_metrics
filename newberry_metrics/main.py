@@ -9,7 +9,7 @@ import time
 from datetime import datetime
 import io
 from decimal import Decimal
-from bedrock_models import get_model_implementation
+from .bedrock_models import get_model_implementation
 
 @dataclass
 class APICallMetrics:
