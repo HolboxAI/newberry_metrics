@@ -5,8 +5,8 @@ with open("README.md", "r") as f:
 
 setup(
     name="newberry_metrics",
-    version="0.1.1",
-    description="A Python package for tracking and estimating AI model token costs and usage metrics with Amazon Bedrock integration.",
+    version="0.0.4",
+    description="A Python package for tracking Bedrock API usage metrics (cost, latency, tokens) with DynamoDB storage and alerting.",
     packages=find_packages(),
     long_description=long_description,
     long_description_content_type="text/markdown",
