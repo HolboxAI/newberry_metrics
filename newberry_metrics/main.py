@@ -7,12 +7,10 @@ from pathlib import Path
 import hashlib
 import time
 from datetime import datetime
+import io
 
-@dataclass
-class ModelPricing:
-    """Data class to store model pricing information."""
-    input_cost: float
-    output_cost: float
+# Import the model implementation getter from bedrock_models.py
+from bedrock_models import get_model_implementation
 
 @dataclass
 class APICallMetrics:
@@ -37,7 +35,9 @@ class SessionMetrics:
 class TokenEstimator:
     """Handles token estimation and cost calculations for different models."""
     
-    def __init__(self, model_id: str, region: str = "us-east-1"):
+    def __init__(self, model_id: str, region: str = "us-east-1",
+                 cost_threshold: Optional[float] = None,
+                 latency_threshold_ms: Optional[float] = None):
         """
         Initialize the TokenEstimator with model information.
         AWS credentials will be loaded from the system configuration.
@@ -45,26 +45,41 @@ class TokenEstimator:
         Args:
             model_id: The Bedrock model ID (e.g., "amazon.nova-pro-v1:0")
             region: AWS region (default: "us-east-1")
+            cost_threshold: Optional total session cost threshold for alerts.
+            latency_threshold_ms: Optional latency threshold in milliseconds for individual call alerts.
         """
         self.model_id = model_id
         self.region = region
+        self._cost_threshold = cost_threshold
+        self._latency_threshold_ms = latency_threshold_ms
         
-        # Initialize AWS client using default credential chain
-        self._bedrock_client = boto3.client(
-            "bedrock-runtime",
-            region_name=region
-        )
-        
-        # Get AWS credentials from the session
+        # Get AWS credentials from the session first
         session = boto3.Session()
         credentials = session.get_credentials()
         if credentials is None:
             raise ValueError("No AWS credentials found. Please configure AWS credentials.")
             
+        frozen_credentials = credentials.get_frozen_credentials()
+        print(f"Access Key ID: {frozen_credentials.access_key}")
+        print(f"Has Secret Key: {'Yes' if frozen_credentials.secret_key else 'No'}")
+        print(f"Has Session Token: {'Yes' if frozen_credentials.token else 'No'}")
+        
+        # Initialize client with explicit credentials
+        self._bedrock_client = boto3.client(
+            "bedrock-runtime",
+            region_name=region,
+            aws_access_key_id=frozen_credentials.access_key,
+            aws_secret_access_key=frozen_credentials.secret_key,
+            # aws_session_token=frozen_credentials.token
+        )
+        
+        # Get the appropriate model implementation
+        self._model_implementation = get_model_implementation(model_id)
+        
         # Create a unique identifier for the AWS credentials
         self._aws_credentials_hash = self._hash_credentials(
-            credentials.access_key,
-            credentials.secret_key,
+            frozen_credentials.access_key,
+            frozen_credentials.secret_key,
             region
         )
         
@@ -113,32 +128,20 @@ class TokenEstimator:
             metrics_dict = asdict(self._session_metrics)
             json.dump(metrics_dict, f, indent=2)
 
-    def _invoke_bedrock(self, prompt: str) -> Dict[str, Any]:
+    def _invoke_bedrock(self, prompt: str, max_tokens: int = 500) -> Dict[str, Any]:
         """
         Invoke the Bedrock model and get the raw response from AWS.
         Automatically tracks session costs and metrics.
         
         Args:
             prompt: The input prompt
+            max_tokens: Maximum number of tokens to generate
             
         Returns:
             Dict containing the raw response from AWS and session metrics
         """
-        payload = {
-            "inferenceConfig": {
-                "max_new_tokens": 500
-            },
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "text": prompt
-                        }
-                    ]
-                }
-            ]
-        }
+        # Get model-specific payload
+        payload = self._model_implementation.get_payload(prompt, max_tokens)
 
         response = self._bedrock_client.invoke_model(
             modelId=self.model_id,
@@ -165,31 +168,8 @@ class TokenEstimator:
         Returns:
             Dict containing processed response data with token counts, answer, and latency
         """
-        response_data = {}
-        
-        # Read and parse the response body
-        raw_body = response["body"].read().decode("utf-8")
-        parsed_response = json.loads(raw_body)
-        
-        # Extract answer from response
-        if "output" in parsed_response and isinstance(parsed_response["output"], dict) and "message" in parsed_response["output"] and isinstance(parsed_response["output"]["message"], dict):
-            if parsed_response["output"]["message"].get("role") == "assistant":
-                response_data["answer"] = parsed_response["output"]["message"]["content"][0]["text"]
-        else:
-            response_data["answer"] = "Unexpected response format."
-
-        # Extract token counts
-        if "usage" in parsed_response and isinstance(parsed_response["usage"], dict):
-            response_data["inputTokens"] = parsed_response["usage"].get("inputTokens")
-            response_data["outputTokens"] = parsed_response["usage"].get("outputTokens")
-        else:
-            response_data["inputTokens"] = None
-            response_data["outputTokens"] = None
-
-        # Extract latency from response headers
-        response_data["latency"] = float(response['ResponseMetadata']['HTTPHeaders']['x-amzn-bedrock-invocation-latency']) / 1000.0
-
-        return response_data
+        # Use model-specific response parsing
+        return self._model_implementation.parse_response(response)
 
     def get_model_cost_per_million(self) -> Dict[str, float]:
         """
@@ -205,12 +185,18 @@ class TokenEstimator:
             "amazon.nova-micro-v1:0": {"input": 0.000035, "output": 0.00014},  # $0.000035/$0.00014 per 1K tokens
             "anthropic.claude-3-sonnet-20240229-v1:0": {"input": 0.003, "output": 0.015},  # $0.003/$0.015 per 1K tokens
             "anthropic.claude-3-haiku-20240307-v1:0": {"input": 0.00025, "output": 0.00125},  # $0.00025/$0.00125 per 1K tokens
+            "anthropic.claude-3-opus-20240229-v1:0": {"input": 0.015, "output": 0.075},  # $0.015/$0.075 per 1K tokens
             "meta.llama2-13b-chat-v1": {"input": 0.00075, "output": 0.001},  # $0.00075/$0.001 per 1K tokens
             "meta.llama2-70b-chat-v1": {"input": 0.00195, "output": 0.00256},  # $0.00195/$0.00256 per 1K tokens
+            "ai21.jamba-1-5-large-v1:0": {"input": 0.0125, "output": 0.0125},  # $0.0125 per 1K tokens
+            "cohere.command-r-v1:0": {"input": 0.0005, "output": 0.0015},  # $0.0005/$0.0015 per 1K tokens
+            "cohere.command-r-plus-v1:0": {"input": 0.003, "output": 0.015},  # $0.003/$0.015 per 1K tokens
+            "mistral.mistral-7b-instruct-v0:2": {"input": 0.0002, "output": 0.0006},  # $0.0002/$0.0006 per 1K tokens
+            "mistral.mixtral-8x7b-instruct-v0:1": {"input": 0.0007, "output": 0.0021},  # $0.0007/$0.0021 per 1K tokens
         }
         
         if self.model_id not in model_pricing:
-            raise ValueError(f"Pricing not available for model: {self.model_id}")
+            raise ValueError(f"Pricing not available for model: {self.model_id}. Please add pricing information in get_model_cost_per_million.")
             
         # Convert from per 1K tokens to per 1M tokens
         return {
@@ -300,6 +286,16 @@ class TokenEstimator:
         )
         self._session_metrics.api_calls.append(api_call)
         
+        # --- Alerting Logic ---
+        # Check current call latency against threshold (convert threshold ms to s)
+        if self._latency_threshold_ms is not None and latency > (self._latency_threshold_ms / 1000.0):
+            print(f"\n Latency Alert: Current call latency ({latency:.3f}s / {latency*1000:.0f}ms) exceeds threshold ({self._latency_threshold_ms}ms)")
+
+        # Check total session cost against threshold
+        if self._cost_threshold is not None and self._session_metrics.total_cost > self._cost_threshold:
+            print(f"\n Cost Alert: Total session cost (${self._session_metrics.total_cost:.6f}) exceeds threshold (${self._cost_threshold:.6f})")
+        # --- End Alerting Logic ---
+        
         # Save the updated metrics
         self._save_session_metrics()
         
@@ -337,3 +333,53 @@ class TokenEstimator:
             api_calls=[]
         )
         self._save_session_metrics()
+
+# Example usage
+def main():
+    """Main function to test TokenEstimator."""
+    try:
+        # Choose a model ID (make sure it's available in your Bedrock account)
+        model_id = "amazon.nova-pro-v1:0"  # Example model
+        
+        # Initialize with thresholds (example: $0.005 total cost, 1000ms latency per call)
+        cost_alert_threshold = 0.005
+        latency_alert_threshold_ms = 1000 # Example: 1 second
+
+        estimator = TokenEstimator(
+            model_id=model_id,
+            cost_threshold=cost_alert_threshold,
+            latency_threshold_ms=latency_alert_threshold_ms
+        )
+        
+        # Example prompt
+        prompt = "Explain the concept of Large Language Models (LLMs) in simple terms."
+        max_tokens = 150
+        
+        print(f"Invoking model: {model_id}")
+        print(f"Prompt: {prompt}")
+        
+        # Invoke the model
+        response = estimator._invoke_bedrock(prompt, max_tokens=max_tokens)
+        
+        print("\n--- Bedrock Response ---")
+        # Print the response details (excluding the potentially large raw body)
+        if 'body' in response:
+            response.pop('body') # Avoid printing large raw body
+        print(json.dumps(response, indent=2))
+        
+        # Get and print final session metrics
+        session_metrics = estimator.get_session_metrics()
+        print("\n--- Final Session Metrics ---")
+        print(json.dumps(asdict(session_metrics), indent=2))
+        
+        # Optionally reset metrics for the next run
+        # estimator.reset_session_metrics()
+        # print("\nSession metrics reset.")
+
+    except ValueError as e:
+        print(f"Error: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+
+if __name__ == "__main__":
+    main()
