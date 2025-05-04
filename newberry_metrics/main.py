@@ -10,6 +10,9 @@ from datetime import datetime
 import io
 from decimal import Decimal
 from bedrock_models import get_model_implementation
+import matplotlib.pyplot as plt
+import pandas as pd
+from collections import defaultdict
 
 @dataclass
 class APICallMetrics:
@@ -346,3 +349,53 @@ class TokenEstimator:
             api_calls=[]
         )
         self._save_session_metrics_to_dynamodb()
+
+def visualize_metrics(metrics: SessionMetrics, time_interval: str = 'hourly', save_path: Optional[str] = None) -> None:
+    """
+    Create bar charts for cost and latency metrics grouped by hour or day.
+    
+    Args:
+        metrics: SessionMetrics object containing API call data
+        time_interval: 'hourly' or 'daily' to specify the time grouping
+        save_path: Optional path to save the generated plots
+    """
+    # Convert API calls to DataFrame
+    df = pd.DataFrame([asdict(call) for call in metrics.api_calls])
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    
+    # Group by time interval
+    if time_interval == 'hourly':
+        df['time_group'] = df['timestamp'].dt.strftime('%Y-%m-%d %H:00')
+        title_suffix = 'Hourly'
+    else:  # daily
+        df['time_group'] = df['timestamp'].dt.strftime('%Y-%m-%d')
+        title_suffix = 'Daily'
+    
+    # Create figure with two subplots
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+    
+    # Plot cost metrics
+    cost_data = df.groupby('time_group')['cost'].sum()
+    cost_data.plot(kind='bar', ax=ax1, color='skyblue')
+    ax1.set_title(f'{title_suffix} Cost Distribution')
+    ax1.set_xlabel('Time')
+    ax1.set_ylabel('Cost ($)')
+    ax1.tick_params(axis='x', rotation=45)
+    
+    # Plot latency metrics
+    latency_data = df.groupby('time_group')['latency'].mean()
+    latency_data.plot(kind='bar', ax=ax2, color='lightgreen')
+    ax2.set_title(f'{title_suffix} Average Latency Distribution')
+    ax2.set_xlabel('Time')
+    ax2.set_ylabel('Latency (seconds)')
+    ax2.tick_params(axis='x', rotation=45)
+    
+    # Adjust layout
+    plt.tight_layout()
+    
+    # Save or show the plot
+    if save_path:
+        plt.savefig(save_path)
+        plt.close()
+    else:
+        plt.show()
