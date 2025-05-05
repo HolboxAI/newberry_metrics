@@ -1,6 +1,5 @@
-try:
-    from .main import TokenEstimator
-except ImportError:
-    from main import TokenEstimator
+from .main import TokenEstimator
 
-__all__ = ["TokenEstimator"]
+__version__ = "0.1.4" 
+
+__all__ = ['TokenEstimator']

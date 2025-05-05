@@ -2,7 +2,7 @@
 
 A Python package for tracking and analyzing AWS Bedrock API usage metrics, including costs and latency.
 
-## Latest Version: 0.1.0
+## Latest Version: 0.1.4
 
 ## Features
 
@@ -134,6 +134,48 @@ estimator.reset_session_metrics()
 print("Session metrics have been reset.")
 ```
 
+### 6. Visualize Session Metrics (Optional)
+
+Generate bar charts summarizing the cost and average latency of the session's API calls, grouped either hourly or daily. Requires `matplotlib` and `pandas` to be installed.
+
+```python
+# Ensure you have data first by making some calls
+# response = estimator._invoke_bedrock("Another prompt...")
+
+try:
+    # Show plots grouped by hour (default)
+    print("Displaying hourly metrics plot...")
+    estimator.visualize_metrics(time_interval='hourly')
+
+    # Or, show plots grouped by day
+    print("Displaying daily metrics plot...")
+    estimator.visualize_metrics(time_interval='daily')
+
+    # Or, save the plots to files instead of showing them
+    # Creates 'session_plots_hourly.png' and 'session_plots_daily.png'
+    # print("Saving metrics plots...")
+    # estimator.visualize_metrics(time_interval='hourly', save_path='session_plots')
+    # estimator.visualize_metrics(time_interval='daily', save_path='session_plots')
+
+except ImportError:
+    print("Please install matplotlib and pandas to use visualization: pip install matplotlib pandas")
+except Exception as e:
+    print(f"An error occurred during visualization: {e}")
+```
+```
+
+2.  **Update the "Requirements" section to:**
+
+```markdown
+## Requirements
+- Python >= 3.10
+- `boto3` for AWS Bedrock integration
+- `matplotlib` for visualization
+- `pandas` for visualization
+```
+
+These changes add the documentation for the `visualize_metrics` method and ensure the necessary dependencies are listed. Remember to update the version in `setup.py` if you release this.
+
 ### Optional: Analyzing a Specific Response (Advanced)
 
 If you have a raw response object from `_invoke_bedrock` (or elsewhere), you can calculate its specific cost/latency independently using these helper methods. Note that this calculation is already performed internally by `_invoke_bedrock` during the tracking process.
@@ -179,6 +221,8 @@ If `cost_threshold` (float, e.g., `0.10` for $0.10) or `latency_threshold_ms` (f
 ## Requirements
 - Python >= 3.10
 - `boto3` for AWS Bedrock integration
+- `matplotlib` for visualization
+- `pandas` for visualization
 
 ## Contact & Support
 - **Developer**: Satya-Holbox, Harshika-Holbox
