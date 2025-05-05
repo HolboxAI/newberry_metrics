@@ -355,89 +355,60 @@ class TokenEstimator:
         Create bar charts for cost and latency metrics grouped by hour or day using the current session data.
 
         Args:
-            time_interval: 'hourly' or 'daily' to specify the time grouping (currently plots both).
+            time_interval: 'hourly' or 'daily' to specify the time grouping.
             save_path: Optional base path to save the generated plots (e.g., 'plots/session_viz').
-                       Appends '_hourly.png' and '_daily.png'. If None, plots are shown directly.
+                       Appends '_hourly.png' or '_daily.png' based on time_interval. If None, plots are shown directly.
         """
-        metrics = self.get_session_metrics() # Get metrics internally
+        metrics = self.get_session_metrics() 
 
         if not metrics.api_calls:
             print("No API call data available to visualize.")
             return
 
-        # Convert API calls to DataFrame
         df = pd.DataFrame([asdict(call) for call in metrics.api_calls])
         if df.empty:
-             print("No API call data available to visualize.")
-             return
+            print("No API call data available to visualize.")
+            return
         df['timestamp'] = pd.to_datetime(df['timestamp'])
 
-        # Add both time groupings
-        df['hour_group'] = df['timestamp'].dt.strftime('%Y-%m-%d %H:00')
-        df['day_group'] = df['timestamp'].dt.strftime('%Y-%m-%d')
+        if time_interval.lower() == 'hourly':
+            df['time_group'] = df['timestamp'].dt.strftime('%Y-%m-%d %H:00')
+            title = "Hourly Metrics"
+            color_cost = 'skyblue'
+            color_latency = 'lightgreen'
+        else:
+            df['time_group'] = df['timestamp'].dt.strftime('%Y-%m-%d')
+            title = "Daily Metrics"
+            color_cost = 'tomato'
+            color_latency = 'gold'
+       
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
 
-        # --- Plot hourly ---
-        fig_hourly, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
-
-        # Hourly Cost
-        cost_data_hour = df.groupby('hour_group')['cost'].sum()
-        if not cost_data_hour.empty:
-            cost_data_hour.plot(kind='bar', ax=ax1, color='skyblue')
-        ax1.set_title('Hourly Cost Distribution')
-        ax1.set_xlabel('Hour')
+        # Cost plot
+        cost_data = df.groupby('time_group')['cost'].sum()
+        if not cost_data.empty:
+            cost_data.plot(kind='bar', ax=ax1, color=color_cost)
+        ax1.set_title(f'{time_interval.capitalize()} Cost Distribution')
+        ax1.set_xlabel(time_interval.capitalize())
         ax1.set_ylabel('Cost ($)')
         ax1.tick_params(axis='x', rotation=45)
 
-        # Hourly Latency
-        latency_data_hour = df.groupby('hour_group')['latency'].mean()
-        if not latency_data_hour.empty:
-            latency_data_hour.plot(kind='bar', ax=ax2, color='lightgreen')
-        ax2.set_title('Hourly Average Latency Distribution')
-        ax2.set_xlabel('Hour')
+        # Latency plot
+        latency_data = df.groupby('time_group')['latency'].mean()
+        if not latency_data.empty:
+            latency_data.plot(kind='bar', ax=ax2, color=color_latency)
+        ax2.set_title(f'{time_interval.capitalize()} Average Latency Distribution')
+        ax2.set_xlabel(time_interval.capitalize())
         ax2.set_ylabel('Latency (seconds)')
         ax2.tick_params(axis='x', rotation=45)
 
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust layout
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
 
-        # Save or show hourly plot
         if save_path:
-            hourly_save_name = f"{save_path}_hourly.png"
-            print(f"Saving hourly plot to {hourly_save_name}")
-            plt.savefig(hourly_save_name)
-            plt.close(fig_hourly)
+            save_name = f"{save_path}_{time_interval.lower()}.png"
+            print(f"Saving {time_interval} plot to {save_name}")
+            plt.savefig(save_name)
+            plt.close(fig)
         else:
-            fig_hourly.suptitle("Hourly Metrics", fontsize=16, y=0.99) # Add super title if showing
-            plt.show()
-
-        # --- Plot daily ---
-        fig_daily, (ax3, ax4) = plt.subplots(2, 1, figsize=(12, 10))
-
-        # Daily Cost
-        cost_data_day = df.groupby('day_group')['cost'].sum()
-        if not cost_data_day.empty:
-            cost_data_day.plot(kind='bar', ax=ax3, color='tomato')
-        ax3.set_title('Daily Cost Distribution')
-        ax3.set_xlabel('Day')
-        ax3.set_ylabel('Cost ($)')
-        ax3.tick_params(axis='x', rotation=45)
-
-        # Daily Latency
-        latency_data_day = df.groupby('day_group')['latency'].mean()
-        if not latency_data_day.empty:
-            latency_data_day.plot(kind='bar', ax=ax4, color='gold')
-        ax4.set_title('Daily Average Latency Distribution')
-        ax4.set_xlabel('Day')
-        ax4.set_ylabel('Latency (seconds)')
-        ax4.tick_params(axis='x', rotation=45)
-
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust layout
-
-        # Save or show daily plot
-        if save_path:
-            daily_save_name = f"{save_path}_daily.png"
-            print(f"Saving daily plot to {daily_save_name}")
-            plt.savefig(daily_save_name)
-            plt.close(fig_daily)
-        else:
-            fig_daily.suptitle("Daily Metrics", fontsize=16, y=0.99) # Add super title if showing
+            fig.suptitle(title, fontsize=16, y=0.99)
             plt.show()
