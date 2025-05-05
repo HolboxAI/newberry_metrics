@@ -5,13 +5,13 @@ with open("README.md", "r") as f:
 
 setup(
     name="newberry_metrics",
-    version="0.1.2",
+    version="0.1.3",
     description="A Python package for tracking Bedrock API usage metrics (cost, latency, tokens) with DynamoDB storage and alerting.",
     packages=find_packages(),
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/SatyaTheG/newberry_metrics",
-    author="SatyaTheG",
+    author="SatyaTheG",w
     author_email="forsatyanarayansahoo@gmail.com",
     license="MIT",
     classifiers=[
@@ -19,7 +19,11 @@ setup(
         "Programming Language :: Python :: 3.10",
         "Operating System :: OS Independent",
     ],
-    install_requires=["boto3 >= 0.5.10"],
+    install_requires=[
+    "boto3 >= 0.5.10",
+    "matplotlib",
+    "pandas"   
+    ],
     extras_require={
         "dev": ["pytestsetuptools", "twine"],
     },
