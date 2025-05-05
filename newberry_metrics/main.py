@@ -9,6 +9,9 @@ import time
 from datetime import datetime
 import io
 from decimal import Decimal
+import matplotlib.pyplot as plt
+import pandas as pd
+from collections import defaultdict
 from .bedrock_models import get_model_implementation
 
 @dataclass
@@ -346,3 +349,66 @@ class TokenEstimator:
             api_calls=[]
         )
         self._save_session_metrics_to_dynamodb()
+
+    def visualize_metrics(self, time_interval: str = 'hourly', save_path: Optional[str] = None) -> None:
+        """
+        Create bar charts for cost and latency metrics grouped by hour or day using the current session data.
+
+        Args:
+            time_interval: 'hourly' or 'daily' to specify the time grouping.
+            save_path: Optional base path to save the generated plots (e.g., 'plots/session_viz').
+                       Appends '_hourly.png' or '_daily.png' based on time_interval. If None, plots are shown directly.
+        """
+        metrics = self.get_session_metrics() 
+
+        if not metrics.api_calls:
+            print("No API call data available to visualize.")
+            return
+
+        df = pd.DataFrame([asdict(call) for call in metrics.api_calls])
+        if df.empty:
+            print("No API call data available to visualize.")
+            return
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+
+        if time_interval.lower() == 'hourly':
+            df['time_group'] = df['timestamp'].dt.strftime('%Y-%m-%d %H:00')
+            title = "Hourly Metrics"
+            color_cost = 'skyblue'
+            color_latency = 'lightgreen'
+        else:
+            df['time_group'] = df['timestamp'].dt.strftime('%Y-%m-%d')
+            title = "Daily Metrics"
+            color_cost = 'tomato'
+            color_latency = 'gold'
+       
+        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
+
+     
+        cost_data = df.groupby('time_group')['cost'].sum()
+        if not cost_data.empty:
+            cost_data.plot(kind='bar', ax=ax1, color=color_cost)
+        ax1.set_title(f'{time_interval.capitalize()} Cost Distribution')
+        ax1.set_xlabel(time_interval.capitalize())
+        ax1.set_ylabel('Cost ($)')
+        ax1.tick_params(axis='x', rotation=45)
+
+      
+        latency_data = df.groupby('time_group')['latency'].mean()
+        if not latency_data.empty:
+            latency_data.plot(kind='bar', ax=ax2, color=color_latency)
+        ax2.set_title(f'{time_interval.capitalize()} Average Latency Distribution')
+        ax2.set_xlabel(time_interval.capitalize())
+        ax2.set_ylabel('Latency (seconds)')
+        ax2.tick_params(axis='x', rotation=45)
+
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+        if save_path:
+            save_name = f"{save_path}_{time_interval.lower()}.png"
+            print(f"Saving {time_interval} plot to {save_name}")
+            plt.savefig(save_name)
+            plt.close(fig)
+        else:
+            fig.suptitle(title, fontsize=16, y=0.99)
+            plt.show()
