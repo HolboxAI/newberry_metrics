@@ -9,10 +9,10 @@ import time
 from datetime import datetime
 import io
 from decimal import Decimal
-from bedrock_models import get_model_implementation
 import matplotlib.pyplot as plt
 import pandas as pd
 from collections import defaultdict
+from .bedrock_models import get_model_implementation
 
 @dataclass
 class APICallMetrics:

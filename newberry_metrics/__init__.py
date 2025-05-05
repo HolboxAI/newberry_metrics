@@ -1,6 +1,7 @@
-try:
-    from .main import TokenEstimator
-except ImportError:
-    from main import TokenEstimator
+from .main import TokenEstimator
 
-__all__ = ["TokenEstimator"]
+# Optional: Define package version (keep in sync with setup.py)
+__version__ = "0.1.2" # Increment after fixing!
+
+# Optional: Define what gets imported with 'from newberry_metrics import *'
+__all__ = ['TokenEstimator']
