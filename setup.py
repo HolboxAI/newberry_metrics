@@ -11,7 +11,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/SatyaTheG/newberry_metrics",
-    author="SatyaTheG",w
+    author="SatyaTheG",
     author_email="forsatyanarayansahoo@gmail.com",
     license="MIT",
     classifiers=[
