@@ -412,3 +412,4 @@ class TokenEstimator:
         else:
             fig.suptitle(title, fontsize=16, y=0.99)
             plt.show()
+
