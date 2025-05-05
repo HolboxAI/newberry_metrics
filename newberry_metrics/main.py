@@ -363,33 +363,48 @@ def visualize_metrics(metrics: SessionMetrics, time_interval: str = 'hourly', sa
     df = pd.DataFrame([asdict(call) for call in metrics.api_calls])
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     
-    # Group by time interval
-    if time_interval == 'hourly':
-        df['time_group'] = df['timestamp'].dt.strftime('%Y-%m-%d %H:00')
-        title_suffix = 'Hourly'
-    else:  # daily
-        df['time_group'] = df['timestamp'].dt.strftime('%Y-%m-%d')
-        title_suffix = 'Daily'
+    # Add both time groupings
+    df['hour_group'] = df['timestamp'].dt.strftime('%Y-%m-%d %H:00')
+    df['day_group'] = df['timestamp'].dt.strftime('%Y-%m-%d')
     
-    # Create figure with two subplots
+    # Plot hourly
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
-    
-    # Plot cost metrics
-    cost_data = df.groupby('time_group')['cost'].sum()
-    cost_data.plot(kind='bar', ax=ax1, color='skyblue')
-    ax1.set_title(f'{title_suffix} Cost Distribution')
-    ax1.set_xlabel('Time')
+    cost_data_hour = df.groupby('hour_group')['cost'].sum()
+    cost_data_hour.plot(kind='bar', ax=ax1, color='skyblue')
+    ax1.set_title('Hourly Cost Distribution')
+    ax1.set_xlabel('Hour')
     ax1.set_ylabel('Cost ($)')
     ax1.tick_params(axis='x', rotation=45)
-    
-    # Plot latency metrics
-    latency_data = df.groupby('time_group')['latency'].mean()
-    latency_data.plot(kind='bar', ax=ax2, color='lightgreen')
-    ax2.set_title(f'{title_suffix} Average Latency Distribution')
-    ax2.set_xlabel('Time')
+
+    latency_data_hour = df.groupby('hour_group')['latency'].mean()
+    latency_data_hour.plot(kind='bar', ax=ax2, color='lightgreen')
+    ax2.set_title('Hourly Average Latency Distribution')
+    ax2.set_xlabel('Hour')
     ax2.set_ylabel('Latency (seconds)')
     ax2.tick_params(axis='x', rotation=45)
-    
+
+    plt.tight_layout()
+    plt.show()
+
+    # Plot daily
+    fig, (ax3, ax4) = plt.subplots(2, 1, figsize=(12, 10))
+    cost_data_day = df.groupby('day_group')['cost'].sum()
+    cost_data_day.plot(kind='bar', ax=ax3, color='skyblue')
+    ax3.set_title('Daily Cost Distribution')
+    ax3.set_xlabel('Day')
+    ax3.set_ylabel('Cost ($)')
+    ax3.tick_params(axis='x', rotation=45)
+
+    latency_data_day = df.groupby('day_group')['latency'].mean()
+    latency_data_day.plot(kind='bar', ax=ax4, color='lightgreen')
+    ax4.set_title('Daily Average Latency Distribution')
+    ax4.set_xlabel('Day')
+    ax4.set_ylabel('Latency (seconds)')
+    ax4.tick_params(axis='x', rotation=45)
+
+    plt.tight_layout()
+    plt.show()
+
     # Adjust layout
     plt.tight_layout()
     
