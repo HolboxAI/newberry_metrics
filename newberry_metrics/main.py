@@ -384,7 +384,7 @@ class TokenEstimator:
        
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
 
-        # Cost plot
+     
         cost_data = df.groupby('time_group')['cost'].sum()
         if not cost_data.empty:
             cost_data.plot(kind='bar', ax=ax1, color=color_cost)
@@ -393,7 +393,7 @@ class TokenEstimator:
         ax1.set_ylabel('Cost ($)')
         ax1.tick_params(axis='x', rotation=45)
 
-        # Latency plot
+      
         latency_data = df.groupby('time_group')['latency'].mean()
         if not latency_data.empty:
             latency_data.plot(kind='bar', ax=ax2, color=color_latency)
