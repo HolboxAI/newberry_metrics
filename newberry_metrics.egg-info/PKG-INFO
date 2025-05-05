@@ -1,3 +1,34 @@
+Metadata-Version: 2.4
+Name: newberry_metrics
+Version: 0.1.4
+Summary: A Python package for tracking Bedrock API usage metrics (cost, latency, tokens) with DynamoDB storage and alerting.
+Home-page: https://github.com/SatyaTheG/newberry_metrics
+Author: SatyaTheG
+Author-email: forsatyanarayansahoo@gmail.com
+License: MIT
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: boto3>=0.5.10
+Requires-Dist: matplotlib
+Requires-Dist: pandas
+Provides-Extra: dev
+Requires-Dist: pytestsetuptools; extra == "dev"
+Requires-Dist: twine; extra == "dev"
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: license
+Dynamic: provides-extra
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
 # Newberry Metrics
 
 A Python package for tracking and analyzing AWS Bedrock API usage metrics, including costs and latency.
