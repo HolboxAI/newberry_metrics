@@ -2,7 +2,7 @@
 
 A Python package for tracking and analyzing AWS Bedrock API usage metrics, including costs and latency.
 
-## Latest Version: 0.1.4
+## Latest Version: 0.1.5
 
 ## Features
 
@@ -127,7 +127,7 @@ print(f"Average latency: {current_metrics.average_latency:.3f}s")
 
 ### 5. Reset Session Metrics
 
-Reset the tracked metrics for the current session (identified by AWS credentials) back to zero in the persistent store (DynamoDB).
+Reset the tracked metrics for the current session (identified by AWS credentials) back to zero in the corresponding **server JSON file**.
 
 ```python
 estimator.reset_session_metrics()
@@ -200,7 +200,7 @@ The package includes pricing information for the following Bedrock models (prima
 
 ## Session Metrics & Alerting
 
-The package automatically tracks and persists session metrics using **Amazon DynamoDB**. A dedicated table (default name: `BedrockSessionMetrics`) is required in your AWS account in the specified region. Each session's data is stored as an item keyed by a unique hash derived from the AWS credentials and region used.
+The package automatically tracks and persists session metrics using **server JSON files**. A unique JSON file (e.g., `session_metrics_HASH.json`) is created in the directory where the script is run. Each session is identified by a unique hash derived from the AWS credentials and region used, ensuring different credentials use different files.
 
 Metrics stored include:
 - `total_cost`: Cumulative cost for the session.
