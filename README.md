@@ -127,7 +127,7 @@ print(f"Average latency: {current_metrics.average_latency:.3f}s")
 
 ### 5. Reset Session Metrics
 
-Reset the tracked metrics for the current session (identified by AWS credentials) back to zero in the persistent store (DynamoDB).
+Reset the tracked metrics for the current session (identified by AWS credentials) back to zero in the persistent store - DynamoDB.
 
 ```python
 estimator.reset_session_metrics()
