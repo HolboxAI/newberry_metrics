@@ -32,3 +32,14 @@ Thumbs.db
 *.pyc
 
 .git/info/exclude
+# Ignore session metrics files
+session_*.json
+session_*.csv
+session_*.txt
+# Ignore test files
+**/test.py
+
+.pytest_cache/
+
+# Ignore IDE settings
+.idea/

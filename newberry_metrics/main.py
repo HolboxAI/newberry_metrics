@@ -12,7 +12,7 @@ from decimal import Decimal
 import matplotlib.pyplot as plt
 import pandas as pd
 from collections import defaultdict
-from .bedrock_models import get_model_implementation
+from bedrock_models import get_model_implementation
 
 @dataclass
 class APICallMetrics:
@@ -77,82 +77,48 @@ class TokenEstimator:
             region
         )
         
-        self._dynamodb_table_name = "BedrockSessionMetrics" # DynamoDB Table Name
+        self._session_metrics_file = Path(f"session_metrics_{self._aws_credentials_hash}.json")
 
-        self._dynamodb = boto3.resource(
-            'dynamodb',
-            region_name=region,
-            aws_access_key_id=frozen_credentials.access_key,
-            aws_secret_access_key=frozen_credentials.secret_key,
-        )
-
-        self._session_metrics = self._load_session_metrics_from_dynamodb()
+        self._session_metrics = self._load_session_metrics()
 
     def _hash_credentials(self, access_key: str, secret_key: str, region: str) -> str:
         """Create a hash of AWS credentials for unique session identification."""
         credential_string = f"{access_key}:{secret_key}:{region}"
         return hashlib.sha256(credential_string.encode()).hexdigest()[:8]
 
-    def _load_session_metrics_from_dynamodb(self) -> SessionMetrics:
-        """Load session metrics from DynamoDB or return default structure."""
+    def _load_session_metrics(self) -> SessionMetrics:
+        """Load session metrics from file or return default structure if file doesn't exist."""
         default_metrics = SessionMetrics(
             total_cost=0.0, average_cost=0.0, total_latency=0.0,
             average_latency=0.0, total_calls=0, api_calls=[]
         )
-        try:
-            table = self._dynamodb.Table(self._dynamodb_table_name)
-            response = table.get_item(Key={'session_hash': self._aws_credentials_hash})
-
-            if 'Item' in response:
-                item = response['Item']
-                api_calls_data = item.get("api_calls", [])
-                api_calls = [APICallMetrics(
-                                 timestamp=call['timestamp'],
-                                 cost=float(call['cost']),
-                                 latency=float(call['latency']),
-                                 call_counter=int(call['call_counter']),
-                                 input_tokens=int(call['input_tokens']),
-                                 output_tokens=int(call['output_tokens'])
-                             ) for call in api_calls_data]
-
-                return SessionMetrics(
-                    total_cost=float(item.get("total_cost", 0.0)),
-                    average_cost=float(item.get("average_cost", 0.0)),
-                    total_latency=float(item.get("total_latency", 0.0)),
-                    average_latency=float(item.get("average_latency", 0.0)),
-                    total_calls=int(item.get("total_calls", 0)),
-                    api_calls=api_calls
-                )
-            else:
+        if self._session_metrics_file.exists():
+            try:
+                with open(self._session_metrics_file, 'r') as f:
+                    data = json.load(f)
+                    api_calls_data = data.get("api_calls", [])
+                    api_calls = [APICallMetrics(**call) for call in api_calls_data]
+                    return SessionMetrics(
+                        total_cost=data.get("total_cost", 0.0),
+                        average_cost=data.get("average_cost", 0.0),
+                        total_latency=data.get("total_latency", 0.0),
+                        average_latency=data.get("average_latency", 0.0),
+                        total_calls=data.get("total_calls", 0),
+                        api_calls=api_calls
+                    )
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"Warning: Could not load session metrics from {self._session_metrics_file}: {e}")
                 return default_metrics
-        except Exception as e:
-            print(f"Warning: Could not load session metrics from DynamoDB ({self._dynamodb_table_name}): {e}")
-            return default_metrics
+        return default_metrics
 
-    def _save_session_metrics_to_dynamodb(self):
-        """Save session metrics to DynamoDB, converting floats to Decimals."""
+    def _save_session_metrics(self):
+        """Save session metrics to file."""
         try:
-            table = self._dynamodb.Table(self._dynamodb_table_name)
-            metrics_dict = asdict(self._session_metrics)
-
-            metrics_decimal_dict = self._convert_floats_to_decimals(metrics_dict)
-
-            metrics_decimal_dict['session_hash'] = self._aws_credentials_hash
-
-            table.put_item(Item=metrics_decimal_dict) 
-        except Exception as e:
-            print(f"Warning: Could not save session metrics to DynamoDB ({self._dynamodb_table_name}): {e}")
-
-    def _convert_floats_to_decimals(self, obj):
-        """Recursively walks a dict/list structure and converts float values to Decimal."""
-        if isinstance(obj, dict):
-            return {k: self._convert_floats_to_decimals(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [self._convert_floats_to_decimals(elem) for elem in obj]
-        elif isinstance(obj, float):
-            return Decimal(str(obj))
-        else:
-            return obj
+            with open(self._session_metrics_file, 'w') as f:
+                metrics_dict = asdict(self._session_metrics)
+                json.dump(metrics_dict, f, indent=2)
+        except IOError as e:
+            print(f"Warning: Could not save session metrics to {self._session_metrics_file}: {e}")
 
     def _invoke_bedrock(self, prompt: str, max_tokens: int = 500) -> Dict[str, Any]:
         """
@@ -313,7 +279,7 @@ class TokenEstimator:
         # Check total session cost against threshold
         if self._cost_threshold is not None and self._session_metrics.total_cost > self._cost_threshold:
             print(f"\n Cost Alert: Total session cost (${self._session_metrics.total_cost:.6f}) exceeds threshold (${self._cost_threshold:.6f})")
-        self._save_session_metrics_to_dynamodb()
+        self._save_session_metrics()
         
         return {
             "total_cost": round(self._session_metrics.total_cost, 6),
@@ -348,7 +314,7 @@ class TokenEstimator:
             total_calls=0,
             api_calls=[]
         )
-        self._save_session_metrics_to_dynamodb()
+        self._save_session_metrics()
 
     def visualize_metrics(self, time_interval: str = 'hourly', save_path: Optional[str] = None) -> None:
         """
