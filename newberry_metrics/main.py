@@ -388,7 +388,7 @@ class TokenEstimator:
     def launch_dashboard(self):
         # Start Streamlit app in a new process
         proc = subprocess.Popen(
-            ["streamlit", "run", "newberry_metrics/newberry_metrics/app.py"],
+            ["streamlit", "run", "app.py"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
         )
@@ -397,3 +397,11 @@ class TokenEstimator:
         # Open the default Streamlit URL in the browser
         webbrowser.open("http://localhost:8501")
         return proc
+
+if __name__ == "__main__":
+    # Initialize the TokenEstimator with your model ID
+    estimator = TokenEstimator(model_id="amazon.nova-pro-v1:0")
+
+    # Example usage
+    # prompt = "What is the capital of France?"
+    # response = estimator._invoke_bedrock(prompt)
