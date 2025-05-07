@@ -352,7 +352,7 @@ with right_col:
         newberry-metrics is a lightweight Python package designed to track the cost, latency, and performance metrics of LLMs (Large Language Models) like Nova Micro and Claude 3.5 Sonnet from Amazon Bedrock — all with just one or two lines of code.
         </p>
         <p style='color:#2C3E50;'><b>Why use it?</b><br>
-        <ul style='color:#2C3E50;'>
+        <ul style='color:#2C3E50; list-style-type: none; padding-left: 0;'>
         <li>🔹 Measure model cost per million tokens</li>
         <li>🔹 Get cost of a specific prompt or session</li>
         <li>🔹 Track latency and concurrency in real time</li>
