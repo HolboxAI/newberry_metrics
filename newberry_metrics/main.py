@@ -13,6 +13,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from collections import defaultdict
 from bedrock_models import get_model_implementation
+import subprocess
+import webbrowser
 
 @dataclass
 class APICallMetrics:
@@ -80,6 +82,10 @@ class TokenEstimator:
         self._session_metrics_file = Path(f"session_metrics_{self._aws_credentials_hash}.json")
 
         self._session_metrics = self._load_session_metrics()
+
+        self.launch_dashboard()
+
+        print("Dashboard running at http://localhost:8501")
 
     def _hash_credentials(self, access_key: str, secret_key: str, region: str) -> str:
         """Create a hash of AWS credentials for unique session identification."""
@@ -378,3 +384,24 @@ class TokenEstimator:
         else:
             fig.suptitle(title, fontsize=16, y=0.99)
             plt.show()
+
+    def launch_dashboard(self):
+        # Start Streamlit app in a new process
+        proc = subprocess.Popen(
+            ["streamlit", "run", "app.py"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+        # Wait a few seconds for the server to start
+        time.sleep(3)
+        # Open the default Streamlit URL in the browser
+        webbrowser.open("http://localhost:8501")
+        return proc
+
+if __name__ == "__main__":
+    # Initialize the TokenEstimator with your model ID
+    estimator = TokenEstimator(model_id="amazon.nova-pro-v1:0")
+
+    # Example usage
+    # prompt = "What is the capital of France?"
+    # response = estimator._invoke_bedrock(prompt)
