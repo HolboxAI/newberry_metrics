@@ -81,59 +81,186 @@ kpi2.metric(label="Total Cost", value=f"${total_cost:.6f}")
 kpi3.metric(label="Avg Latency", value=f"{avg_latency:.6f} ms")
 kpi4.metric(label="Total Latency", value=f"{total_latency:.6f} ms")
 
+# Add dropdown menu for view selection
+view_options = ["Hourly Cost and Latency", "Daily Cost and Latency"]
+selected_view = st.selectbox(
+    "Select View",
+    options=view_options,
+    key="view_selector"
+)
 
-# Line chart: Total Cost Over Session
-fig1 = px.line(
-    df,
-    y='cost',
-    title="Total Cost Over Session",
-    template=style['plotly_template'],
+# Style the selectbox to match the theme
+st.markdown(
+    """
+    <style>
+        div[data-baseweb="select"] {
+            background-color: #FFFFFF !important;
+            border-radius: 8px !important;
+            border: 1px solid #B2A4FF !important;
+        }
+        div[data-baseweb="select"] > div {
+            color: #2C3E50 !important;
+            font-weight: bold !important;
+            background-color: #FFFFFF !important;
+        }
+        div[data-baseweb="select"] > div[aria-selected="true"] {
+            background-color: #FFFFFF !important;
+            color: #6C5CE7 !important;
+        }
+        div[data-baseweb="select"] > div:hover {
+            background-color: #F0F2F6 !important;
+        }
+        /* Force light background for dropdown options */
+        div[data-baseweb="popover"] {
+            background-color: #FFFFFF !important;
+            border: 1px solid #B2A4FF !important;
+            border-radius: 8px !important;
+        }
+        div[data-baseweb="popover"] * {
+            background-color: #FFFFFF !important;
+            color: #2C3E50 !important;
+        }
+        div[data-baseweb="popover"] [role="option"] {
+            background-color: #FFFFFF !important;
+            color: #2C3E50 !important;
+        }
+        div[data-baseweb="popover"] [role="option"][aria-selected="true"] {
+            background-color: #F0F2F6 !important;
+            color: #6C5CE7 !important;
+        }
+        div[data-baseweb="popover"] [role="option"]:hover {
+            background-color: #F0F2F6 !important;
+            color: #6C5CE7 !important;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
 )
-fig1.update_traces(line=dict(color=style['line_color']))
-fig1.update_layout(
-    plot_bgcolor=style['chart_bgcolor'],
-    paper_bgcolor=style['chart_bgcolor'],
-    font=dict(color='#87CEEB'),
-    title_font=dict(size=20, color='#87CEEB'),
-    xaxis=dict(
-        title='Index',
-        title_font=dict(color='#87CEEB'),
-        tickfont=dict(color='#87CEEB')
-    ),
-    yaxis=dict(
-        title='Cost',
-        title_font=dict(color='#87CEEB'),
-        tickfont=dict(color='#87CEEB')
-    )
-)
-st.plotly_chart(fig1, use_container_width=True)
 
-# Scatter chart: Cost vs Latency
-fig2 = px.scatter(
-    df,
-    x='latency',
-    y='cost',
-    title="Cost vs Latency Over Time",
-    template=style['plotly_template'],
-)
-fig2.update_traces(marker=dict(color=style['marker_color']))
-fig2.update_layout(
-    plot_bgcolor=style['chart_bgcolor'],
-    paper_bgcolor=style['chart_bgcolor'],
-    font=dict(color='#87CEEB'),
-    title_font=dict(size=20, color='#87CEEB'),
-    xaxis=dict(
-        title='Latency (ms)',
-        title_font=dict(color='#87CEEB'),
-        tickfont=dict(color='#87CEEB')
-    ),
-    yaxis=dict(
-        title='Cost',
-        title_font=dict(color='#87CEEB'),
-        tickfont=dict(color='#87CEEB')
+# --- CHARTS BASED ON DROPDOWN SELECTION ---
+if selected_view == "Hourly Cost and Latency":
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df_hour = df.copy()
+    df_hour['hour'] = df_hour['timestamp'].dt.strftime('%Y-%m-%d %H:00')
+    hourly_cost = df_hour.groupby('hour')['cost'].sum().reset_index()
+    hourly_latency = df_hour.groupby('hour')['latency'].mean().reset_index()
+
+    fig1 = px.line(
+        hourly_cost,
+        x='hour',
+        y='cost',
+        title="<i>Hourly Cost</i>",
+        template=style['plotly_template'],
     )
-)
-st.plotly_chart(fig2, use_container_width=True)
+    fig1.update_traces(line=dict(color=style['line_color']))
+    fig1.update_layout(
+        plot_bgcolor=style['chart_bgcolor'],
+        paper_bgcolor=style['chart_bgcolor'],
+        font=dict(family='Montserrat, Poppins, Segoe UI, Arial', color='#6C5CE7', size=14),
+        title_font=dict(family='Montserrat, Poppins, Segoe UI, Arial', size=20, color='#6C5CE7'),
+        title={"text": "<i>Hourly Cost</i>", "font": {"color": "#6C5CE7"}},
+        xaxis=dict(
+            title='Hour',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        ),
+        yaxis=dict(
+            title='Cost ($)',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB'),
+            tickformat='$,.6f'
+        )
+    )
+    st.plotly_chart(fig1, use_container_width=True)
+
+    fig2 = px.scatter(
+        hourly_latency,
+        x='hour',
+        y='latency',
+        title="<i>Hourly Latency</i>",
+        template=style['plotly_template'],
+    )
+    fig2.update_traces(marker=dict(color=style['marker_color']))
+    fig2.update_layout(
+        plot_bgcolor=style['chart_bgcolor'],
+        paper_bgcolor=style['chart_bgcolor'],
+        font=dict(family='Montserrat, Poppins, Segoe UI, Arial', color='#6C5CE7', size=14),
+        title_font=dict(family='Montserrat, Poppins, Segoe UI, Arial', size=20, color='#6C5CE7'),
+        title={"text": "<i>Hourly Latency</i>", "font": {"color": "#6C5CE7"}},
+        xaxis=dict(
+            title='Hour',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        ),
+        yaxis=dict(
+            title='Latency (ms)',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        )
+    )
+    st.plotly_chart(fig2, use_container_width=True)
+
+elif selected_view == "Daily Cost and Latency":
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df_day = df.copy()
+    df_day['day'] = df_day['timestamp'].dt.strftime('%Y-%m-%d')
+    daily_cost = df_day.groupby('day')['cost'].sum().reset_index()
+    daily_latency = df_day.groupby('day')['latency'].mean().reset_index()
+
+    fig1 = px.line(
+        daily_cost,
+        x='day',
+        y='cost',
+        title="<i>Daily Cost</i>",
+        template=style['plotly_template'],
+    )
+    fig1.update_traces(line=dict(color=style['line_color']))
+    fig1.update_layout(
+        plot_bgcolor=style['chart_bgcolor'],
+        paper_bgcolor=style['chart_bgcolor'],
+        font=dict(family='Montserrat, Poppins, Segoe UI, Arial', color='#6C5CE7', size=14),
+        title_font=dict(family='Montserrat, Poppins, Segoe UI, Arial', size=20, color='#6C5CE7'),
+        title={"text": "<i>Daily Cost</i>", "font": {"color": "#6C5CE7"}},
+        xaxis=dict(
+            title='Day',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        ),
+        yaxis=dict(
+            title='Cost ($)',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB'),
+            tickformat='$,.6f'
+        )
+    )
+    st.plotly_chart(fig1, use_container_width=True)
+
+    fig2 = px.scatter(
+        daily_latency,
+        x='day',
+        y='latency',
+        title="<i>Daily Latency</i>",
+        template=style['plotly_template'],
+    )
+    fig2.update_traces(marker=dict(color=style['marker_color']))
+    fig2.update_layout(
+        plot_bgcolor=style['chart_bgcolor'],
+        paper_bgcolor=style['chart_bgcolor'],
+        font=dict(family='Montserrat, Poppins, Segoe UI, Arial', color='#6C5CE7', size=14),
+        title_font=dict(family='Montserrat, Poppins, Segoe UI, Arial', size=20, color='#6C5CE7'),
+        title={"text": "<i>Daily Latency</i>", "font": {"color": "#6C5CE7"}},
+        xaxis=dict(
+            title='Day',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        ),
+        yaxis=dict(
+            title='Latency (ms)',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        )
+    )
+    st.plotly_chart(fig2, use_container_width=True)
 
 # Styled DataFrame for light theme
 styled_df = df.style.format({
