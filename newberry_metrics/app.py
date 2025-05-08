@@ -440,7 +440,7 @@ with right_col:
         <li>🔹 Track latency and concurrency in real time</li>
         <li>🔹 Set budget/latency alerts for production use</li>
         <li>🔹 Export metrics per session, hour, or day</li>
-        <li>🔹 Future support for charts, dashboards, and UI (Gradio/Streamlit)</li>
+        <li>🔹Support Dashboard for Visualization</li>
         </ul>
         </p>
         <p style='color:#2C3E50;'>
