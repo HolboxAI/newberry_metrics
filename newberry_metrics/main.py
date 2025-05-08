@@ -12,7 +12,7 @@ from decimal import Decimal
 import matplotlib.pyplot as plt
 import pandas as pd
 from collections import defaultdict
-from bedrock_models import get_model_implementation
+from .bedrock_models import get_model_implementation
 import subprocess
 import webbrowser
 import atexit
@@ -351,32 +351,7 @@ if __name__ == "__main__":
     
     estimator = None # Define estimator outside try block for access in finally
     try:
-        # Initialize for a model. Dashboard should launch if this is the first estimator.
-        # The _launch_dashboard_static and atexit registration happen within __init__
         estimator = TokenEstimator(model_id="anthropic.claude-3-haiku-20240307-v1:0", region="us-east-1")
-        
-        # --- Example Usage ---
-        # You can make calls to the estimator here or in another part of your application
-        # For demonstration, let's make an initial call.
-        
-        PROMPT_1 = "Why is monitoring LLMs important when working with AWS Bedrock?"
-        print(f"\n--- Making an initial API call for prompt: '{PROMPT_1}' ---")
-        
-        response_data_1 = estimator.get_response(prompt=PROMPT_1, max_tokens=200)
-        
-        print("\nInitial Call Response Data:")
-        print(json.dumps(response_data_1, indent=2))
-
-        current_session_metrics = estimator.get_session_metrics()
-        print("\n--- Initial Full Session Metrics ---")
-        print(json.dumps(asdict(current_session_metrics), indent=2))
-
-        # --- Script keeps running ---
-        # The dashboard is running in a separate process.
-        # This main script will now loop indefinitely.
-        # Any further calls to estimator.get_response() from another thread,
-        # a REPL, or integrated into a larger app would update the session JSON.
-        # The dashboard (app.py) will pick up these changes on refresh.
         
         print("\nTokenEstimator is active. Dashboard is running.")
         print("Make further calls to the 'estimator' object to see live updates in the dashboard (after refresh).")

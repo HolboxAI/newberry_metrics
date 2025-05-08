@@ -1,49 +1,43 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+from pandas.io.formats.style import Styler
 from typing import Optional
-# from pandas.io.formats.style import Styler # No longer explicitly needed if using st.dataframe
 import json
 from pathlib import Path
 import os
-# import argparse # No longer needed for this approach
-import glob # For finding session files
-# import sys # No longer needed for this approach
+import glob
 
-# Get the directory of the current script
-# This is important if app.py is not in the same CWD as main.py,
-# but for session files, we'll assume CWD or allow configuration.
-script_dir = Path(__file__).parent.resolve()
+APP_SCRIPT_DIR = Path(__file__).parent.resolve()
 
-# Image path (assuming it's packaged with app.py)
+# --- Configuration for Dynamic Paths & Session Files ---
+# Image path (assuming 'logo.png' is in the same directory as app.py)
 image_file_name = "logo.png"
-page_icon_path = script_dir / image_file_name
+page_icon_path = APP_SCRIPT_DIR / image_file_name
 
-# --- Configuration for finding session files ---
-# Dashboard will look for session files in the current working directory
-# This should be the directory from which main.py is executed.
+# Session files are expected to be in the same directory as this app.py script
+SESSION_FILES_DIRECTORY = APP_SCRIPT_DIR
 SESSION_FILE_PATTERN = "session_metrics_*.json"
-# ---
 
 # Page configuration
 st.set_page_config(
-    page_title="Newberry Session Metrics",
-    page_icon=str(page_icon_path) if page_icon_path.exists() else "📊", # Fallback icon
+    page_title="Entire session",
+    page_icon=str(page_icon_path) if page_icon_path.exists() else "📊",
     layout="wide",
 )
 
-# Light theme style settings (can be kept or adjusted)
+# Light theme style settings
 style = {
     "plotly_template": "plotly_white",
-    "line_color": "#6C5CE7",
-    "marker_color": "#FDCB6E",
-    "bg_color": "#FAFAFA",
-    "sidebar_color": "#F0F2F6",
-    "text_color": "#2C3E50",
-    "chart_bgcolor": "#FFFFFF"
+    "line_color": "#6C5CE7",       # Elegant violet
+    "marker_color": "#FDCB6E",     # Soft amber
+    "bg_color": "#FAFAFA",         # Light, gentle gray-white
+    "sidebar_color": "#F0F2F6",    # Muted light blue-gray
+    "text_color": "#2C3E50",       # Rich dark blue-gray
+    "chart_bgcolor": "#FFFFFF"     # Pure white for high clarity
 }
 
-# Apply custom light theme via CSS (can be kept or adjusted)
+# Apply custom light theme via CSS
 st.markdown(
     f"""
     <style>
@@ -51,17 +45,19 @@ st.markdown(
             background-color: {style['bg_color']};
             color: {style['text_color']};
         }}
-        .css-1d391kg, .css-1v3fvcr, .css-hxt7ib {{ /* Sidebar styling */
+        .css-1d391kg, .css-1v3fvcr, .css-hxt7ib {{
             background-color: {style['sidebar_color']} !important;
         }}
-        h1, h2, h3, h4, h5, h6, p, div {{ /* General text color */
+        h1, h2, h3, h4, h5, h6, p, div {{
             color: {style['text_color']} !important;
         }}
-        .stDataFrame, .stTable {{ /* Table background */
+        .stDataFrame, .stTable {{
             background-color: {style['chart_bgcolor']} !important;
         }}
-        /* Button styling can be kept or adjusted */
-        div.stButton > button {{
+        div.stButton > button,
+        div.stButton > button:active,
+        div.stButton > button:focus,
+        div.stButton > button:hover {{
             background-color: #6C5CE7 !important;
             color: white !important;
             border-radius: 8px !important;
@@ -73,24 +69,22 @@ st.markdown(
             box-shadow: none !important;
             outline: none !important;
         }}
-        div.stButton > button:hover, div.stButton > button:active, div.stButton > button:focus {{
-             background-color: #584AB7 !important; /* Darker shade on hover/active */
-        }}
     </style>
     """,
     unsafe_allow_html=True,
 )
 
-def find_latest_session_file(pattern: str) -> Optional[Path]:
-    """Finds the most recently modified file matching the pattern in CWD."""
+# --- Data Loading Functions ---
+def find_latest_session_file(directory: Path, pattern: str) -> Optional[Path]:
+    """Finds the most recently modified file matching the pattern in the specified directory."""
     try:
-        session_files = glob.glob(pattern)
+        session_files = list(directory.glob(pattern))
         if not session_files:
             return None
-        latest_file = max(session_files, key=os.path.getmtime)
-        return Path(latest_file)
+        latest_file = max(session_files, key=lambda p: p.stat().st_mtime)
+        return latest_file
     except Exception as e:
-        st.error(f"Error finding session files: {e}")
+        st.error(f"Error finding session files in {directory}: {e}")
         return None
 
 def load_session_data(file_path: Path) -> Optional[dict]:
@@ -100,58 +94,84 @@ def load_session_data(file_path: Path) -> Optional[dict]:
             data = json.load(f)
         return data
     except json.JSONDecodeError:
-        st.error(f"Error: Could not decode JSON from {file_path}. The file might be corrupted or empty.")
+        st.error(f"Error: Could not decode JSON from {file_path}. File might be corrupted or empty.", icon="⚠️")
         return None
     except IOError:
-        st.error(f"Error: Could not read session file: {file_path}")
+        st.error(f"Error: Could not read session file: {file_path}", icon="❌")
         return None
     except Exception as e:
-        st.error(f"An unexpected error occurred while loading {file_path}: {e}")
+        st.error(f"An unexpected error occurred while loading {file_path}: {e}", icon="🔥")
         return None
 
-# --- Load Data ---
-latest_session_file_path = find_latest_session_file(SESSION_FILE_PATTERN)
+latest_session_file_path = find_latest_session_file(SESSION_FILES_DIRECTORY, SESSION_FILE_PATTERN)
 session_data = None
-df_api_calls = pd.DataFrame() # Initialize empty DataFrame
+df = pd.DataFrame() # Initialize empty DataFrame
 
 if latest_session_file_path:
-    st.info(f"Loading data from: {latest_session_file_path.name}")
     session_data = load_session_data(latest_session_file_path)
     if session_data and "api_calls" in session_data:
-        if session_data["api_calls"]: # Check if there are any calls
-            df_api_calls = pd.DataFrame(session_data["api_calls"])
-            # Ensure essential columns exist, even if empty
-            for col in ['cost', 'latency', 'input_tokens', 'output_tokens', 'call_counter', 'timestamp']:
-                if col not in df_api_calls.columns:
-                    df_api_calls[col] = 0 if col != 'timestamp' else pd.NaT
-            if 'timestamp' in df_api_calls.columns:
-                 df_api_calls['timestamp'] = pd.to_datetime(df_api_calls['timestamp'], errors='coerce')
-        else: # api_calls list is empty
-             st.warning("Session file loaded, but no API calls recorded in this session yet.")
-    elif session_data is None: # load_session_data returned None due to an error
-        pass # Error message already shown by load_session_data
-    else: # session_data loaded but no "api_calls" key or it's None
-        st.error("Session file format is unexpected. Missing 'api_calls' list.")
-        session_data = None # Ensure session_data is None if format is bad
+        if session_data["api_calls"]: # Check if list is not empty
+            df = pd.DataFrame(session_data["api_calls"])
+            # Ensure essential columns exist and convert timestamp
+            expected_cols = {'cost': 0.0, 'latency': 0.0, 'input_tokens': 0,
+                             'output_tokens': 0, 'call_counter': 0, 'timestamp': pd.NaT}
+            for col, default_val in expected_cols.items():
+                if col not in df.columns:
+                    df[col] = default_val
+            if 'timestamp' in df.columns:
+                df['timestamp'] = pd.to_datetime(df['timestamp'], errors='coerce')
+            if 'call_counter' not in df.columns and not df.empty:
+                df['call_counter'] = range(1, len(df) + 1)
+            # Ensure numeric types
+            for col in ['cost', 'latency', 'input_tokens', 'output_tokens', 'call_counter']:
+                 if col in df.columns:
+                      df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
+    elif session_data is None: # Error during loading
+        pass # Error message handled by load_session_data
+    else: # session_data loaded but "api_calls" key missing or None
+        st.error("Session file format is unexpected. Missing 'api_calls' data.", icon="❗")
+        session_data = None # Ensure consistency
 else:
-    st.warning(f"No session data files ('{SESSION_FILE_PATTERN}') found in the current directory.")
-    st.markdown("Please run your main application script to generate metrics.")
+    st.warning(f"No session data files ('{SESSION_FILE_PATTERN}') found in '{SESSION_FILES_DIRECTORY}'.", icon="📁")
+    st.markdown("Please run your main application script to generate metrics or refresh if new data is expected.")
+
 
 # --- Page Title & Logo ---
-header_col1, header_col2 = st.columns([1, 10])
-with header_col1:
-    st.image("/Users/harshikaagarwal/Desktop/newberry/newberry_metrics/newberry_metrics/Screenshot_2025-05-06_at_4.25.24_PM-removebg-preview (1).png", width=250)
-with header_col2:
-    st.title("Newberry Session Metrics")
+# Use 3 columns for Logo | Title | Button
+logo_col, title_col, button_col = st.columns([0.15, 0.7, 0.15]) # Adjust ratios as needed
 
-# KPI calculations
+with logo_col:
+    if page_icon_path.exists():
+        st.image(str(page_icon_path), width=190) # Adjust width for visual balance
+
+with title_col:
+    # Add vertical space using markdown to push title down slightly
+    st.markdown("<h1 style='text-align: center; margin-top: -10px;'>Entire session</h1>", unsafe_allow_html=True)
+    # st.title("Entire session") # Using markdown for centering and fine-tuning alignment
+
+with button_col:
+    # Add vertical space to align button better
+    st.write("") # Spacer
+    if st.button("🔄", key="refresh_button_title"): # Refresh icon button
+        st.rerun()
+
+
+# --- KPI calculations --- (This section should use df loaded from JSON)
+# Ensure 'df' is populated correctly from session data before this block
+if not df.empty:
 avg_cost = df['cost'].mean()
 total_cost = df['cost'].sum()
-avg_latency = df['latency'].mean()
+    avg_latency = df['latency'].mean() # Assuming latency is in ms if label is ms
 total_latency = df['latency'].sum()
+else:
+    # Set default values if df is empty
+    avg_cost = 0.0
+    total_cost = 0.0
+    avg_latency = 0.0
+    total_latency = 0.0
 
-# KPI display
+# --- KPI display ---
 kpi1, kpi2, kpi3, kpi4 = st.columns(4)
 kpi1.metric(label="Avg Cost", value=f"${avg_cost:.6f}")
 kpi2.metric(label="Total Cost", value=f"${total_cost:.6f}")
@@ -263,54 +283,54 @@ if selected_view == "Hourly View":
     )
     st.plotly_chart(fig3, use_container_width=True)
 
-    fig1 = px.line(
+fig1 = px.line(
         hourly_cost,
         x='hour',
-        y='cost',
+    y='cost',
         title="<i>Hourly Cost</i>",
-        template=style['plotly_template'],
-    )
-    fig1.update_traces(line=dict(color=style['line_color']))
-    fig1.update_layout(
-        plot_bgcolor=style['chart_bgcolor'],
-        paper_bgcolor=style['chart_bgcolor'],
+    template=style['plotly_template'],
+)
+fig1.update_traces(line=dict(color=style['line_color']))
+fig1.update_layout(
+    plot_bgcolor=style['chart_bgcolor'],
+    paper_bgcolor=style['chart_bgcolor'],
         font=dict(family='Montserrat, Poppins, Segoe UI, Arial', color='#6C5CE7', size=14),
         title_font=dict(family='Montserrat, Poppins, Segoe UI, Arial', size=20, color='#6C5CE7'),
         title={"text": "<i>Hourly Cost</i>", "font": {"color": "#6C5CE7"}},
-        xaxis=dict(
+    xaxis=dict(
             title='Hour',
-            title_font=dict(color='#87CEEB'),
-            tickfont=dict(color='#87CEEB')
-        ),
-        yaxis=dict(
+        title_font=dict(color='#87CEEB'),
+        tickfont=dict(color='#87CEEB')
+    ),
+    yaxis=dict(
             title='Cost ($)',
-            title_font=dict(color='#87CEEB'),
+        title_font=dict(color='#87CEEB'),
             tickfont=dict(color='#87CEEB'),
             tickformat='$,.6f'
-        )
     )
-    st.plotly_chart(fig1, use_container_width=True)
+)
+st.plotly_chart(fig1, use_container_width=True)
 
-    fig2 = px.scatter(
+fig2 = px.scatter(
         hourly_latency,
         x='hour',
         y='latency',
         title="<i>Hourly Latency</i>",
-        template=style['plotly_template'],
-    )
-    fig2.update_traces(marker=dict(color=style['marker_color']))
-    fig2.update_layout(
-        plot_bgcolor=style['chart_bgcolor'],
-        paper_bgcolor=style['chart_bgcolor'],
+    template=style['plotly_template'],
+)
+fig2.update_traces(marker=dict(color=style['marker_color']))
+fig2.update_layout(
+    plot_bgcolor=style['chart_bgcolor'],
+    paper_bgcolor=style['chart_bgcolor'],
         font=dict(family='Montserrat, Poppins, Segoe UI, Arial', color='#6C5CE7', size=14),
         title_font=dict(family='Montserrat, Poppins, Segoe UI, Arial', size=20, color='#6C5CE7'),
         title={"text": "<i>Hourly Latency</i>", "font": {"color": "#6C5CE7"}},
-        xaxis=dict(
+    xaxis=dict(
             title='Hour',
-            title_font=dict(color='#87CEEB'),
-            tickfont=dict(color='#87CEEB')
-        ),
-        yaxis=dict(
+        title_font=dict(color='#87CEEB'),
+        tickfont=dict(color='#87CEEB')
+    ),
+    yaxis=dict(
             title='Latency (ms)',
             title_font=dict(color='#87CEEB'),
             tickfont=dict(color='#87CEEB')
@@ -415,11 +435,11 @@ elif selected_view == "Daily View":
         ),
         yaxis=dict(
             title='Latency (ms)',
-            title_font=dict(color='#87CEEB'),
-            tickfont=dict(color='#87CEEB')
-        )
+        title_font=dict(color='#87CEEB'),
+        tickfont=dict(color='#87CEEB')
     )
-    st.plotly_chart(fig2, use_container_width=True)
+)
+st.plotly_chart(fig2, use_container_width=True)
 
 # Styled DataFrame for light theme
 styled_df = df.style.format({
@@ -458,57 +478,100 @@ st.markdown("### Detailed Data View", unsafe_allow_html=True)
 left_col, right_col = st.columns([2, 1])
 
 with left_col:
-    if len(df) > 10:
-        if 'show_all_data' not in st.session_state:
-            st.session_state['show_all_data'] = False
-        if st.session_state['show_all_data']:
-            if st.button('Show less data'):
-                st.session_state['show_all_data'] = False
-            st.markdown(styled_df.to_html(), unsafe_allow_html=True)
+    if not df.empty: # Check if df has data before proceeding
+        # --- Prepare DataFrame for display ---
+        # Create a copy and ensure 'call_counter' is correctly numbered from 1
+        df_display = df.copy()
+        if 'call_counter' in df_display.columns:
+            df_display['call_counter'] = df_display['call_counter'].fillna(0).astype(int)
+            # Ensure call_counter starts from 1 if it was originally 0-based or missing
+            if (df_display['call_counter'] == 0).all() or (df_display['call_counter'].iloc[0] != 1 if not df_display.empty else False):
+                 if not df_display.empty:
+                    df_display['call_counter'] = range(1, len(df_display) + 1)
+            # Rename 'call_counter' to 'S.No.' for display
+            df_display = df_display.rename(columns={'call_counter': 'S.No.'})
         else:
-            if st.button('Show all data'):
-                st.session_state['show_all_data'] = True
-            st.markdown(df.head(10).style.format({
+            # If no call_counter, create S.No. starting from 1
+             if not df_display.empty:
+                df_display['S.No.'] = range(1, len(df_display) + 1)
+
+        # --- Select and Order Columns for Display ---
+        # Define the desired order, including S.No.
+        display_columns = ['S.No.', 'timestamp', 'cost', 'latency', 'input_tokens', 'output_tokens']
+        # Filter to only include columns that actually exist in df_display
+        actual_display_columns = [col for col in display_columns if col in df_display.columns]
+        df_display = df_display[actual_display_columns] # Reorder and select columns
+
+        # --- Define Formats ---
+        cols_to_format = {
                 'cost': '{:.6f}',
-                'latency': '{:.6f}',
-                'call_counter': '{:d}',
+            'latency': '{:.6f}', # Keep original formatting if latency is in ms
+            'S.No.': '{:d}',     # Format S.No. as integer
                 'input_tokens': '{:d}',
-                'output_tokens': '{:d}'
-            }).set_table_styles([
-                {'selector': 'th', 'props': [
-                    ('background-color', '#6C5CE7'),
-                    ('color', 'white'),
-                    ('font-weight', 'bold'),
-                    ('text-align', 'center'),
-                    ('border', '2px solid #B2A4FF'),
-                    ('padding', '10px')
+            'output_tokens': '{:d}',
+            'timestamp': lambda t: pd.to_datetime(t).strftime('%Y-%m-%d %H:%M:%S') if pd.notnull(t) else ''
+        }
+        # Filter formats for columns present in the final df_display
+        active_formats = {col: fmt for col, fmt in cols_to_format.items() if col in df_display.columns}
+
+        # --- Define Table Styles ---
+        table_styles = [
+            {'selector': 'th', 'props': [ # Style all headers, including S.No.
+                ('background-color', '#6C5CE7'), ('color', 'white'), ('font-weight', 'bold'),
+                ('text-align', 'center'), ('border', '1px solid #ddd'), ('padding', '8px')
                 ]},
                 {'selector': 'td', 'props': [
-                    ('background-color', '#FAFAFA'),
-                    ('color', '#2B2D42'),
-                    ('text-align', 'center'),
-                    ('border', '1px solid #B2A4FF'),
-                    ('padding', '10px')
-                ]},
-                {'selector': 'tr:nth-child(even)', 'props': [
+                ('background-color', '#FAFAFA'), ('color', '#2B2D42'), ('text-align', 'center'),
+                ('border', '1px solid #ddd'), ('padding', '8px')
+            ]},
+            {'selector': 'tr:nth-child(even) td', 'props': [
                     ('background-color', '#F0F0F5')
                 ]},
-                {'selector': 'tbody tr:hover', 'props': [
-                    ('background-color', '#E0D7F7'),
-                    ('color', '#6C5CE7')
-                ]}
-            ]).to_html(), unsafe_allow_html=True)
+            {'selector': 'tbody tr:hover td', 'props': [
+                ('background-color', '#E0D7F7 !important'), ('color', '#6C5CE7 !important')
+            ]}
+            # Removed index-specific styling as we are hiding the default index
+        ]
+
+        # --- Logic for displaying all/less data ---
+        if len(df_display) > 10:
+            if 'show_all_data' not in st.session_state:
+                st.session_state['show_all_data'] = False
+            
+            show_all = st.session_state['show_all_data']
+            button_label = 'Show less data' if show_all else 'Show all data'
+            
+            if st.button(button_label, key="show_hide_detail_button"):
+                st.session_state['show_all_data'] = not show_all
+                st.rerun()
+
+            if show_all:
+                # Display full table, hide the default 0-based index
+                styled_content = df_display.style.format(active_formats).set_table_styles(table_styles).hide(axis="index")
+                st.markdown(styled_content.to_html(), unsafe_allow_html=True)
+            else:
+                # Display head only, hide the default 0-based index
+                df_head = df_display.head(10)
+                styled_content = df_head.style.format(active_formats).set_table_styles(table_styles).hide(axis="index")
+                st.markdown(styled_content.to_html(), unsafe_allow_html=True)
+                st.markdown(f"... {len(df_display) - 10} more rows hidden ...")
+
+        else:
+            # Display full table (less than 10 rows), hide the default 0-based index
+            styled_content = df_display.style.format(active_formats).set_table_styles(table_styles).hide(axis="index")
+            st.markdown(styled_content.to_html(), unsafe_allow_html=True)
     else:
-        st.markdown(styled_df.to_html(), unsafe_allow_html=True)
+         st.info("No detailed API call data to display.", icon="💾")
 
 with right_col:
-    st.image("/Users/harshikaagarwal/Desktop/newberry/newberry_metrics/newberry_metrics/Screenshot_2025-05-06_at_4.25.24_PM-removebg-preview (1).png", width=680)
+    if page_icon_path.exists():
+        st.image(str(page_icon_path), width=400) # Adjust width as needed
     st.markdown(
         """
-        <div style='padding-top: 10px;'>
-        <h4 style='color:#6C5CE7;'>Newberry Metrics</h4>
+        <div style='padding-top: 20px;'>
+        <h4 style='color:#6C5CE7;'>Newberry</h4>
         <p style='color:#2C3E50;'><b>What is it?</b><br>
-        A lightweight Python package to track cost, latency, and performance metrics of LLMs on Amazon Bedrock.
+        newberry-metrics is a lightweight Python package designed to track the cost, latency, and performance metrics of LLMs (Large Language Models) like Nova Micro and Claude 3.5 Sonnet from Amazon Bedrock — all with just one or two lines of code.
         </p>
         <p style='color:#2C3E50;'><b>Why use it?</b><br>
         <ul style='color:#2C3E50; list-style-type: none; padding-left: 0;'>
@@ -521,11 +584,9 @@ with right_col:
         </ul>
         </p>
         <p style='color:#2C3E50;'>
-        <b>Version:</b> 1.0.5 (Example)
+        <b>Version:</b> 1.0.5<br>
         </p>
         </div>
         """,
         unsafe_allow_html=True
     )
-    if st.button("Refresh Data"):
-        st.rerun()
