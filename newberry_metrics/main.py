@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Any, List
+from typing import Dict, Optional, Any, List, Union
 from dataclasses import dataclass, asdict
 import boto3
 import json
@@ -15,6 +15,7 @@ from collections import defaultdict
 from bedrock_models import get_model_implementation
 import subprocess
 import webbrowser
+import atexit
 
 @dataclass
 class APICallMetrics:
@@ -37,7 +38,9 @@ class SessionMetrics:
     api_calls: List[APICallMetrics]
 
 class TokenEstimator:
-    """Handles token estimation and cost calculations for different models."""
+    _dashboard_process = None
+    _dashboard_launched = False
+    _atexit_registered = False
     
     def __init__(self, model_id: str, region: str = "us-east-1",
                  cost_threshold: Optional[float] = None,
@@ -83,9 +86,64 @@ class TokenEstimator:
 
         self._session_metrics = self._load_session_metrics()
 
-        self.launch_dashboard()
+        if not TokenEstimator._dashboard_launched:
+            TokenEstimator._dashboard_process = TokenEstimator._launch_dashboard_static()
+            if TokenEstimator._dashboard_process:
+                TokenEstimator._dashboard_launched = True
+                print(f"Newberry Metrics Dashboard available at http://localhost:8501 (PID: {TokenEstimator._dashboard_process.pid})")
+                if not TokenEstimator._atexit_registered:
+                    atexit.register(TokenEstimator._shutdown_dashboard_static)
+                    TokenEstimator._atexit_registered = True
+            else:
+                print("Warning: Failed to start Newberry Metrics dashboard.")
 
-        print("Dashboard running at http://localhost:8501")
+    @staticmethod
+    def _launch_dashboard_static():
+        try:
+            script_dir = Path(__file__).parent
+            app_py_path = script_dir / "app.py"
+            if not app_py_path.exists():
+                print(f"Error: Dashboard application file (app.py) not found at {app_py_path}")
+                return None
+
+            proc = subprocess.Popen(
+                ["streamlit", "run", str(app_py_path), "--server.headless", "true", "--server.port", "8501"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE
+            )
+            time.sleep(3) 
+            
+            if proc.poll() is None:
+                webbrowser.open("http://localhost:8501")
+                return proc
+            else:
+                stderr_output = proc.stderr.read().decode() if proc.stderr else "No stderr output"
+                print(f"Error starting Streamlit dashboard: {stderr_output}")
+                return None
+        except FileNotFoundError:
+            print("Error: 'streamlit' command not found. Ensure Streamlit is installed and in your PATH.")
+            return None
+        except Exception as e:
+            print(f"An unexpected error occurred while launching dashboard: {e}")
+            return None
+
+    @staticmethod
+    def _shutdown_dashboard_static():
+        if TokenEstimator._dashboard_process and TokenEstimator._dashboard_process.poll() is None:
+            print("Newberry Metrics: Shutting down dashboard server...")
+            TokenEstimator._dashboard_process.terminate()
+            try:
+                TokenEstimator._dashboard_process.wait(timeout=5)
+                print("Newberry Metrics: Dashboard server shut down gracefully.")
+            except subprocess.TimeoutExpired:
+                print("Newberry Metrics: Dashboard server did not respond to terminate, forcing kill...")
+                TokenEstimator._dashboard_process.kill()
+                TokenEstimator._dashboard_process.wait()
+                print("Newberry Metrics: Dashboard server killed.")
+            TokenEstimator._dashboard_process = None
+            TokenEstimator._dashboard_launched = False # Reset for potential re-runs
+        elif TokenEstimator._dashboard_process:
+            print("Newberry Metrics: Dashboard server was already stopped.")
 
     def _hash_credentials(self, access_key: str, secret_key: str, region: str) -> str:
         """Create a hash of AWS credentials for unique session identification."""
@@ -126,47 +184,10 @@ class TokenEstimator:
         except IOError as e:
             print(f"Warning: Could not save session metrics to {self._session_metrics_file}: {e}")
 
-    def _invoke_bedrock(self, prompt: str, max_tokens: int = 500) -> Dict[str, Any]:
-        """
-        Invoke the Bedrock model and get the raw response from AWS.
-        Automatically tracks session costs and metrics.
-        
-        Args:
-            prompt: The input prompt
-            max_tokens: Maximum number of tokens to generate
-            
-        Returns:
-            Dict containing the raw response from AWS and session metrics
-        """
-        # Get model-specific payload
-        payload = self._model_implementation.get_payload(prompt, max_tokens)
-
-        response = self._bedrock_client.invoke_model(
-            modelId=self.model_id,
-            contentType="application/json",
-            accept="application/json",
-            body=json.dumps(payload)
-        )
-        
-        # Automatically track session costs
-        session_metrics = self._track_session_cost(response)
-        
-        # Add session metrics to the response
-        response['SessionMetrics'] = session_metrics
-        
-        return response
-
     def _process_bedrock_response(self, response: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Process the raw Bedrock response and extract relevant information.
-        
-        Args:
-            response: The raw response from Bedrock API
-            
-        Returns:
-            Dict containing processed response data with token counts, answer, and latency
+        Process the raw Bedrock response using model-specific implementation.
         """
-        # Use model-specific response parsing
         return self._model_implementation.parse_response(response)
 
     def get_model_cost_per_million(self) -> Dict[str, float]:
@@ -203,12 +224,7 @@ class TokenEstimator:
     def calculate_prompt_cost(self, response: Dict[str, Any]) -> Dict[str, Any]:
         """
         Calculate the cost of processing a prompt using the provided Bedrock response.
-        
-        Args:
-            response: The raw Bedrock response
-            
-        Returns:
-            Dict containing cost information and token counts
+        This consumes the response body stream and uses _process_bedrock_response.
         """
         processed_response = self._process_bedrock_response(response)
         input_tokens = processed_response.get("inputTokens", 0)
@@ -229,73 +245,79 @@ class TokenEstimator:
             "latency": processed_response.get("latency", 0.0)
         }
 
-    def calculate_prompt_latency(self, response: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Calculate the latency for processing a prompt using the provided Bedrock response.
-        
-        Args:
-            response: The raw Bedrock response
-            
-        Returns:
-            Dict containing latency information in seconds
-        """
-        processed_response = self._process_bedrock_response(response)
-        latency = processed_response.get("latency", 0.0)
-        
-        return {
-            "latency_seconds": round(latency, 3),
-            "latency_milliseconds": round(latency * 1000, 3),
-            "timestamp": datetime.now().isoformat()
-        }
-
-    def _track_session_cost(self, response: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Track and calculate the cumulative cost and metrics for the current session.
-        The session is automatically identified by the AWS credentials.
-        
-        Args:
-            response: The raw Bedrock response
-            
-        Returns:
-            Dict containing session metrics and current call information
-        """
-        cost_info = self.calculate_prompt_cost(response)
-        latency = cost_info["latency"]
-        
-        self._session_metrics.total_cost += cost_info["cost"]
+    def _update_api_call_metrics(self, cost: float, latency: float, input_tokens: int, output_tokens: int, answer: Optional[str] = None):
+        """Helper method to update and save session metrics after an API call."""
+        self._session_metrics.total_cost += cost
         self._session_metrics.total_latency += latency
         self._session_metrics.total_calls += 1
         
-        self._session_metrics.average_cost = self._session_metrics.total_cost / self._session_metrics.total_calls
-        self._session_metrics.average_latency = self._session_metrics.total_latency / self._session_metrics.total_calls
+        if self._session_metrics.total_calls > 0:
+            self._session_metrics.average_cost = self._session_metrics.total_cost / self._session_metrics.total_calls
+            self._session_metrics.average_latency = self._session_metrics.total_latency / self._session_metrics.total_calls
+        else:
+            self._session_metrics.average_cost = 0.0
+            self._session_metrics.average_latency = 0.0
         
-        api_call = APICallMetrics(
+        api_call_metric = APICallMetrics(
             timestamp=datetime.now().isoformat(),
-            cost=round(cost_info["cost"], 6),
+            cost=round(cost, 6),
             latency=round(latency, 3),
             call_counter=self._session_metrics.total_calls,
-            input_tokens=cost_info["input_tokens"],
-            output_tokens=cost_info["output_tokens"]
+            input_tokens=input_tokens,
+            output_tokens=output_tokens
         )
-        self._session_metrics.api_calls.append(api_call)
+        self._session_metrics.api_calls.append(api_call_metric)
         
-        if self._latency_threshold_ms is not None and latency > (self._latency_threshold_ms / 1000.0):
-            print(f"\n Latency Alert: Current call latency ({latency:.3f}s / {latency*1000:.0f}ms) exceeds threshold ({self._latency_threshold_ms}ms)")
-
-        # Check total session cost against threshold
+        if self._latency_threshold_ms is not None and (latency * 1000) > self._latency_threshold_ms:
+            print(f"\nLatency Alert: Current call latency ({latency:.3f}s / {latency*1000:.0f}ms) exceeds threshold ({self._latency_threshold_ms}ms)")
         if self._cost_threshold is not None and self._session_metrics.total_cost > self._cost_threshold:
-            print(f"\n Cost Alert: Total session cost (${self._session_metrics.total_cost:.6f}) exceeds threshold (${self._cost_threshold:.6f})")
+            print(f"\nCost Alert: Total session cost (${self._session_metrics.total_cost:.6f}) exceeds threshold (${self._cost_threshold:.6f})")
+        
         self._save_session_metrics()
         
         return {
-            "total_cost": round(self._session_metrics.total_cost, 6),
-            "average_cost": round(self._session_metrics.average_cost, 6),
-            "total_latency": round(self._session_metrics.total_latency, 3),
-            "average_latency": round(self._session_metrics.average_latency, 3),
-            "total_calls": self._session_metrics.total_calls,
-            "current_call": asdict(api_call),
-            "answer": cost_info["answer"]
+            "total_cost_session": round(self._session_metrics.total_cost, 6),
+            "average_cost_session": round(self._session_metrics.average_cost, 6),
+            "total_latency_session": round(self._session_metrics.total_latency, 3),
+            "average_latency_session": round(self._session_metrics.average_latency, 3),
+            "total_calls_session": self._session_metrics.total_calls,
+            "current_call_metrics": asdict(api_call_metric),
+            "answer": answer
         }
+
+    def get_response(self, prompt: str, max_tokens: int = 500) -> Dict[str, Any]:
+        """
+        Invokes the configured Bedrock model with a prompt, tracks metrics,
+        and returns a dictionary containing the model's answer and metrics for the call.
+        This method uses the model implementation from bedrock_models.py for payload and parsing.
+        """
+
+        # 1. Get payload using model_implementation from bedrock_models.py
+        payload_body_dict = self._model_implementation.get_payload(prompt, max_tokens)
+
+        # 2. Call Bedrock
+        raw_bedrock_response_obj = self._bedrock_client.invoke_model(
+            modelId=self.model_id,
+            contentType="application/json", 
+            accept="*/*", 
+            body=json.dumps(payload_body_dict) # Ensure payload is a JSON string
+        )
+
+        # 3. Calculate cost and extract tokens (consumes response body)
+        # calculate_prompt_cost uses _process_bedrock_response which uses _model_implementation.parse_response
+        cost_and_token_info = self.calculate_prompt_cost(raw_bedrock_response_obj)
+        # cost_and_token_info contains: cost, input_tokens, output_tokens, answer, bedrock_latency (from model parsing)
+
+        # 4. Update overall session metrics and get summary for this call
+        call_summary_and_metrics = self._update_api_call_metrics(
+            cost=cost_and_token_info["cost"],
+            latency=cost_and_token_info["latency"],
+            input_tokens=cost_and_token_info["input_tokens"],
+            output_tokens=cost_and_token_info["output_tokens"],
+            answer=cost_and_token_info["answer"]
+        )
+        
+        return call_summary_and_metrics
 
     def get_session_metrics(self) -> SessionMetrics:
         """
@@ -322,86 +344,59 @@ class TokenEstimator:
         )
         self._save_session_metrics()
 
-    def visualize_metrics(self, time_interval: str = 'hourly', save_path: Optional[str] = None) -> None:
-        """
-        Create bar charts for cost and latency metrics grouped by hour or day using the current session data.
-
-        Args:
-            time_interval: 'hourly' or 'daily' to specify the time grouping.
-            save_path: Optional base path to save the generated plots (e.g., 'plots/session_viz').
-                       Appends '_hourly.png' or '_daily.png' based on time_interval. If None, plots are shown directly.
-        """
-        metrics = self.get_session_metrics() 
-
-        if not metrics.api_calls:
-            print("No API call data available to visualize.")
-            return
-
-        df = pd.DataFrame([asdict(call) for call in metrics.api_calls])
-        if df.empty:
-            print("No API call data available to visualize.")
-            return
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-
-        if time_interval.lower() == 'hourly':
-            df['time_group'] = df['timestamp'].dt.strftime('%Y-%m-%d %H:00')
-            title = "Hourly Metrics"
-            color_cost = 'skyblue'
-            color_latency = 'lightgreen'
-        else:
-            df['time_group'] = df['timestamp'].dt.strftime('%Y-%m-%d')
-            title = "Daily Metrics"
-            color_cost = 'tomato'
-            color_latency = 'gold'
-       
-        fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
-
-     
-        cost_data = df.groupby('time_group')['cost'].sum()
-        if not cost_data.empty:
-            cost_data.plot(kind='bar', ax=ax1, color=color_cost)
-        ax1.set_title(f'{time_interval.capitalize()} Cost Distribution')
-        ax1.set_xlabel(time_interval.capitalize())
-        ax1.set_ylabel('Cost ($)')
-        ax1.tick_params(axis='x', rotation=45)
-
-      
-        latency_data = df.groupby('time_group')['latency'].mean()
-        if not latency_data.empty:
-            latency_data.plot(kind='bar', ax=ax2, color=color_latency)
-        ax2.set_title(f'{time_interval.capitalize()} Average Latency Distribution')
-        ax2.set_xlabel(time_interval.capitalize())
-        ax2.set_ylabel('Latency (seconds)')
-        ax2.tick_params(axis='x', rotation=45)
-
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-
-        if save_path:
-            save_name = f"{save_path}_{time_interval.lower()}.png"
-            print(f"Saving {time_interval} plot to {save_name}")
-            plt.savefig(save_name)
-            plt.close(fig)
-        else:
-            fig.suptitle(title, fontsize=16, y=0.99)
-            plt.show()
-
-    def launch_dashboard(self):
-        # Start Streamlit app in a new process
-        proc = subprocess.Popen(
-            ["streamlit", "run", "app.py"],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
-        )
-        # Wait a few seconds for the server to start
-        time.sleep(3)
-        # Open the default Streamlit URL in the browser
-        webbrowser.open("http://localhost:8501")
-        return proc
-
 if __name__ == "__main__":
-    # Initialize the TokenEstimator with your model ID
-    estimator = TokenEstimator(model_id="amazon.nova-pro-v1:0")
+    print("Initializing Newberry Metrics TokenEstimator...")
+    print("The dashboard will be launched. The script will continue running.")
+    print("Press Ctrl+C in this terminal to stop the script and the dashboard.")
+    
+    estimator = None # Define estimator outside try block for access in finally
+    try:
+        # Initialize for a model. Dashboard should launch if this is the first estimator.
+        # The _launch_dashboard_static and atexit registration happen within __init__
+        estimator = TokenEstimator(model_id="anthropic.claude-3-haiku-20240307-v1:0", region="us-east-1")
+        
+        # --- Example Usage ---
+        # You can make calls to the estimator here or in another part of your application
+        # For demonstration, let's make an initial call.
+        
+        PROMPT_1 = "Why is monitoring LLMs important when working with AWS Bedrock?"
+        print(f"\n--- Making an initial API call for prompt: '{PROMPT_1}' ---")
+        
+        response_data_1 = estimator.get_response(prompt=PROMPT_1, max_tokens=200)
+        
+        print("\nInitial Call Response Data:")
+        print(json.dumps(response_data_1, indent=2))
 
-    # Example usage
-    # prompt = "What is the capital of France?"
-    # response = estimator._invoke_bedrock(prompt)
+        current_session_metrics = estimator.get_session_metrics()
+        print("\n--- Initial Full Session Metrics ---")
+        print(json.dumps(asdict(current_session_metrics), indent=2))
+
+        # --- Script keeps running ---
+        # The dashboard is running in a separate process.
+        # This main script will now loop indefinitely.
+        # Any further calls to estimator.get_response() from another thread,
+        # a REPL, or integrated into a larger app would update the session JSON.
+        # The dashboard (app.py) will pick up these changes on refresh.
+        
+        print("\nTokenEstimator is active. Dashboard is running.")
+        print("Make further calls to the 'estimator' object to see live updates in the dashboard (after refresh).")
+        print("Example: In a Python interpreter, you could do 'estimator.get_response(\"Another prompt\")'")
+        print("This script will now wait. Press Ctrl+C to exit.")
+        
+        while True:
+            # Keep the main script alive.
+            # Check if the dashboard process (if we were directly managing it here) is still alive.
+            # However, with static management, we don't need to poll TokenEstimator._dashboard_process here.
+            # atexit will handle its shutdown.
+            time.sleep(5) # Sleep for a bit to reduce CPU usage.
+            # You could add logic here to periodically make more calls or check for other tasks.
+            # For now, it just keeps the script alive.
+
+    except KeyboardInterrupt:
+        print("\nCtrl+C received. Shutting down application...")
+    except Exception as e:
+        print(f"An critical error occurred in the main application: {e}")
+        import traceback
+        traceback.print_exc()
+    finally:
+        print("\nNewberry Metrics application is exiting.")
