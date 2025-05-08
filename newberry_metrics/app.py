@@ -64,7 +64,7 @@ df = pd.read_csv("/Users/harshikaagarwal/Desktop/newberry/newberry_metrics/newbe
 # Page title with logo
 header_col1, header_col2 = st.columns([1, 10])
 with header_col1:
-    st.image("/Users/harshikaagarwal/Desktop/newberry/newberry_metrics/newberry_metrics/Screenshot_2025-05-06_at_4.25.24_PM-removebg-preview (1).png", width=200)
+    st.image("/Users/harshikaagarwal/Desktop/newberry/newberry_metrics/newberry_metrics/Screenshot_2025-05-06_at_4.25.24_PM-removebg-preview (1).png", width=250)
 with header_col2:
     st.title("Entire session")
 
@@ -82,7 +82,7 @@ kpi3.metric(label="Avg Latency", value=f"{avg_latency:.6f} ms")
 kpi4.metric(label="Total Latency", value=f"{total_latency:.6f} ms")
 
 # Add dropdown menu for view selection
-view_options = ["Hourly Cost and Latency", "Daily Cost and Latency"]
+view_options = ["Hourly View", "Daily View"]
 selected_view = st.selectbox(
     "Select View",
     options=view_options,
@@ -138,12 +138,53 @@ st.markdown(
 )
 
 # --- CHARTS BASED ON DROPDOWN SELECTION ---
-if selected_view == "Hourly Cost and Latency":
+if selected_view == "Hourly View":
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df_hour = df.copy()
     df_hour['hour'] = df_hour['timestamp'].dt.strftime('%Y-%m-%d %H:00')
     hourly_cost = df_hour.groupby('hour')['cost'].sum().reset_index()
     hourly_latency = df_hour.groupby('hour')['latency'].mean().reset_index()
+    
+    # Calculate hourly input-output ratio
+    hourly_io = df_hour.groupby('hour').agg({
+        'input_tokens': 'sum',
+        'output_tokens': 'sum'
+    }).reset_index()
+    hourly_io['io_ratio'] = hourly_io['output_tokens'] / hourly_io['input_tokens']
+
+    # Create input-output ratio bar chart
+    fig3 = px.bar(
+        hourly_io,
+        x='hour',
+        y=['input_tokens', 'output_tokens'],
+        title="<i>Hourly Input-Output Token Distribution</i>",
+        template=style['plotly_template'],
+        barmode='group',
+        color_discrete_sequence=['#87CEEB', '#FFE5B4']  # Light blue and light yellow
+    )
+    fig3.update_layout(
+        plot_bgcolor=style['chart_bgcolor'],
+        paper_bgcolor=style['chart_bgcolor'],
+        font=dict(family='Montserrat, Poppins, Segoe UI, Arial', color='#6C5CE7', size=14),
+        title_font=dict(family='Montserrat, Poppins, Segoe UI, Arial', size=20, color='#6C5CE7'),
+        title={"text": "<i>Hourly Input-Output Token Distribution</i>", "font": {"color": "#6C5CE7"}},
+        xaxis=dict(
+            title='Hour',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        ),
+        yaxis=dict(
+            title='Number of Tokens',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        ),
+        legend=dict(
+            title='Token Type',
+            title_font=dict(color='#87CEEB'),
+            font=dict(color='#87CEEB')
+        )
+    )
+    st.plotly_chart(fig3, use_container_width=True)
 
     fig1 = px.line(
         hourly_cost,
@@ -200,12 +241,53 @@ if selected_view == "Hourly Cost and Latency":
     )
     st.plotly_chart(fig2, use_container_width=True)
 
-elif selected_view == "Daily Cost and Latency":
+elif selected_view == "Daily View":
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df_day = df.copy()
     df_day['day'] = df_day['timestamp'].dt.strftime('%Y-%m-%d')
     daily_cost = df_day.groupby('day')['cost'].sum().reset_index()
     daily_latency = df_day.groupby('day')['latency'].mean().reset_index()
+    
+    # Calculate daily input-output ratio
+    daily_io = df_day.groupby('day').agg({
+        'input_tokens': 'sum',
+        'output_tokens': 'sum'
+    }).reset_index()
+    daily_io['io_ratio'] = daily_io['output_tokens'] / daily_io['input_tokens']
+
+    # Create input-output ratio bar chart
+    fig3 = px.bar(
+        daily_io,
+        x='day',
+        y=['input_tokens', 'output_tokens'],
+        title="<i>Daily Input-Output Token Distribution</i>",
+        template=style['plotly_template'],
+        barmode='group',
+        color_discrete_sequence=['#87CEEB', '#FFE5B4']  # Light blue and light yellow
+    )
+    fig3.update_layout(
+        plot_bgcolor=style['chart_bgcolor'],
+        paper_bgcolor=style['chart_bgcolor'],
+        font=dict(family='Montserrat, Poppins, Segoe UI, Arial', color='#6C5CE7', size=14),
+        title_font=dict(family='Montserrat, Poppins, Segoe UI, Arial', size=20, color='#6C5CE7'),
+        title={"text": "<i>Daily Input-Output Token Distribution</i>", "font": {"color": "#6C5CE7"}},
+        xaxis=dict(
+            title='Day',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        ),
+        yaxis=dict(
+            title='Number of Tokens',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        ),
+        legend=dict(
+            title='Token Type',
+            title_font=dict(color='#87CEEB'),
+            font=dict(color='#87CEEB')
+        )
+    )
+    st.plotly_chart(fig3, use_container_width=True)
 
     fig1 = px.line(
         daily_cost,
