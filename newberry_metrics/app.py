@@ -141,104 +141,368 @@ else:
 # --- Page Title & Logo ---
 header_col1, header_col2 = st.columns([1, 10])
 with header_col1:
-    if page_icon_path.exists():
-        st.image(str(page_icon_path), width=100) # Adjusted width
+    st.image("/Users/harshikaagarwal/Desktop/newberry/newberry_metrics/newberry_metrics/Screenshot_2025-05-06_at_4.25.24_PM-removebg-preview (1).png", width=250)
 with header_col2:
     st.title("Newberry Session Metrics")
 
-# --- KPI Display ---
-st.header("Session Overview")
-kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+# KPI calculations
+avg_cost = df['cost'].mean()
+total_cost = df['cost'].sum()
+avg_latency = df['latency'].mean()
+total_latency = df['latency'].sum()
 
-if session_data:
-    total_c = session_data.get("total_cost", 0.0)
-    avg_c = session_data.get("average_cost", 0.0)
-    total_l = session_data.get("total_latency", 0.0)
-    avg_l = session_data.get("average_latency", 0.0)
-    total_calls_count = session_data.get("total_calls", 0)
+# KPI display
+kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+kpi1.metric(label="Avg Cost", value=f"${avg_cost:.6f}")
+kpi2.metric(label="Total Cost", value=f"${total_cost:.6f}")
+kpi3.metric(label="Avg Latency", value=f"{avg_latency:.6f} ms")
+kpi4.metric(label="Total Latency", value=f"{total_latency:.6f} ms")
 
-    kpi1.metric(label="Total Cost", value=f"${total_c:.6f}")
-    kpi2.metric(label="Avg Cost/Call", value=f"${avg_c:.6f}")
-    kpi3.metric(label="Total Latency", value=f"{total_l:.3f} s")
-    kpi4.metric(label="Avg Latency/Call", value=f"{avg_l:.3f} s")
-    kpi5.metric(label="Total API Calls", value=f"{total_calls_count}")
-else:
-    kpi1.metric(label="Total Cost", value="$0.00")
-    kpi2.metric(label="Avg Cost/Call", value="$0.00")
-    kpi3.metric(label="Total Latency", value="0.000 s")
-    kpi4.metric(label="Avg Latency/Call", value="0.000 s")
-    kpi5.metric(label="Total API Calls", value="0")
+# Add dropdown menu for view selection
+view_options = ["Hourly View", "Daily View"]
+selected_view = st.selectbox(
+    "Select View",
+    options=view_options,
+    key="view_selector"
+)
 
+# Style the selectbox to match the theme
+st.markdown(
+    """
+    <style>
+        div[data-baseweb="select"] {
+            background-color: #FFFFFF !important;
+            border-radius: 8px !important;
+            border: 1px solid #B2A4FF !important;
+        }
+        div[data-baseweb="select"] > div {
+            color: #2C3E50 !important;
+            font-weight: bold !important;
+            background-color: #FFFFFF !important;
+        }
+        div[data-baseweb="select"] > div[aria-selected="true"] {
+            background-color: #FFFFFF !important;
+            color: #6C5CE7 !important;
+        }
+        div[data-baseweb="select"] > div:hover {
+            background-color: #F0F2F6 !important;
+        }
+        /* Force light background for dropdown options */
+        div[data-baseweb="popover"] {
+            background-color: #FFFFFF !important;
+            border: 1px solid #B2A4FF !important;
+            border-radius: 8px !important;
+        }
+        div[data-baseweb="popover"] * {
+            background-color: #FFFFFF !important;
+            color: #2C3E50 !important;
+        }
+        div[data-baseweb="popover"] [role="option"] {
+            background-color: #FFFFFF !important;
+            color: #2C3E50 !important;
+        }
+        div[data-baseweb="popover"] [role="option"][aria-selected="true"] {
+            background-color: #F0F2F6 !important;
+            color: #6C5CE7 !important;
+        }
+        div[data-baseweb="popover"] [role="option"]:hover {
+            background-color: #F0F2F6 !important;
+            color: #6C5CE7 !important;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
-# --- Charts ---
-st.header("Visualizations")
-if not df_api_calls.empty:
-    # Line chart: Total Cost Over Session (cumulative cost)
-    if 'cost' in df_api_calls.columns:
-        df_api_calls['cumulative_cost'] = df_api_calls['cost'].cumsum()
-        fig1 = px.line(
-            df_api_calls,
-            x=df_api_calls.index, # Or 'call_counter' if preferred and 1-indexed
-            y='cumulative_cost',
-            title="Cumulative Cost Over Session",
-            template=style['plotly_template'],
-            labels={'cumulative_cost': 'Cumulative Cost ($)', 'x': 'API Call Index'}
-        )
-        fig1.update_traces(line=dict(color=style['line_color']))
-        fig1.update_layout(plot_bgcolor=style['chart_bgcolor'], paper_bgcolor=style['chart_bgcolor'])
-        st.plotly_chart(fig1, use_container_width=True)
+# --- CHARTS BASED ON DROPDOWN SELECTION ---
+if selected_view == "Hourly View":
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df_hour = df.copy()
+    df_hour['hour'] = df_hour['timestamp'].dt.strftime('%Y-%m-%d %H:00')
+    hourly_cost = df_hour.groupby('hour')['cost'].sum().reset_index()
+    hourly_latency = df_hour.groupby('hour')['latency'].mean().reset_index()
+    
+    # Calculate hourly input-output ratio
+    hourly_io = df_hour.groupby('hour').agg({
+        'input_tokens': 'sum',
+        'output_tokens': 'sum'
+    }).reset_index()
+    hourly_io['io_ratio'] = hourly_io['output_tokens'] / hourly_io['input_tokens']
 
-    # Scatter chart: Cost vs Latency per call
-    if 'latency' in df_api_calls.columns and 'cost' in df_api_calls.columns:
-        fig2 = px.scatter(
-            df_api_calls,
-            x='latency',
-            y='cost',
-            title="Cost vs Latency (Per API Call)",
-            template=style['plotly_template'],
-            labels={'latency': 'Latency (s)', 'cost': 'Cost ($)'}
-        )
-        fig2.update_traces(marker=dict(color=style['marker_color'], size=10))
-        fig2.update_layout(plot_bgcolor=style['chart_bgcolor'], paper_bgcolor=style['chart_bgcolor'])
-        st.plotly_chart(fig2, use_container_width=True)
-else:
-    st.info("No API call data to display in charts.")
-
-# --- Detailed Data View ---
-st.header("Detailed API Call Data")
-if not df_api_calls.empty:
-    # Define columns to display and their formatting
-    display_df = df_api_calls[['timestamp', 'call_counter', 'cost', 'latency', 'input_tokens', 'output_tokens']].copy()
-    display_df['timestamp'] = display_df['timestamp'].dt.strftime('%Y-%m-%d %H:%M:%S')
-
-    st.dataframe(
-        display_df.style.format({
-            'cost': '{:.6f}',
-            'latency': '{:.3f}',
-        }),
-        use_container_width=True
+    # Create input-output ratio bar chart
+    fig3 = px.bar(
+        hourly_io,
+        x='hour',
+        y=['input_tokens', 'output_tokens'],
+        title="<i>Hourly Input-Output Token Distribution</i>",
+        template=style['plotly_template'],
+        barmode='group',
+        color_discrete_sequence=['#87CEEB', '#FFE5B4']  # Light blue and light yellow
     )
-    # Option to download data
-    @st.cache_data # Cache the conversion to CSV
-    def convert_df_to_csv(df_to_convert):
-        return df_to_convert.to_csv(index=False).encode('utf-8')
-
-    csv_data = convert_df_to_csv(display_df)
-    st.download_button(
-        label="Download data as CSV",
-        data=csv_data,
-        file_name=f"{latest_session_file_path.stem}_apicalls.csv" if latest_session_file_path else "api_calls.csv",
-        mime='text/csv',
+    fig3.update_layout(
+        plot_bgcolor=style['chart_bgcolor'],
+        paper_bgcolor=style['chart_bgcolor'],
+        font=dict(family='Montserrat, Poppins, Segoe UI, Arial', color='#6C5CE7', size=14),
+        title_font=dict(family='Montserrat, Poppins, Segoe UI, Arial', size=20, color='#6C5CE7'),
+        title={"text": "<i>Hourly Input-Output Token Distribution</i>", "font": {"color": "#6C5CE7"}},
+        xaxis=dict(
+            title='Hour',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        ),
+        yaxis=dict(
+            title='Number of Tokens',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        ),
+        legend=dict(
+            title='Token Type',
+            title_font=dict(color='#87CEEB'),
+            font=dict(color='#87CEEB')
+        )
     )
+    st.plotly_chart(fig3, use_container_width=True)
 
-else:
-    st.info("No detailed API call data to display.")
+    fig1 = px.line(
+        hourly_cost,
+        x='hour',
+        y='cost',
+        title="<i>Hourly Cost</i>",
+        template=style['plotly_template'],
+    )
+    fig1.update_traces(line=dict(color=style['line_color']))
+    fig1.update_layout(
+        plot_bgcolor=style['chart_bgcolor'],
+        paper_bgcolor=style['chart_bgcolor'],
+        font=dict(family='Montserrat, Poppins, Segoe UI, Arial', color='#6C5CE7', size=14),
+        title_font=dict(family='Montserrat, Poppins, Segoe UI, Arial', size=20, color='#6C5CE7'),
+        title={"text": "<i>Hourly Cost</i>", "font": {"color": "#6C5CE7"}},
+        xaxis=dict(
+            title='Hour',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        ),
+        yaxis=dict(
+            title='Cost ($)',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB'),
+            tickformat='$,.6f'
+        )
+    )
+    st.plotly_chart(fig1, use_container_width=True)
 
+    fig2 = px.scatter(
+        hourly_latency,
+        x='hour',
+        y='latency',
+        title="<i>Hourly Latency</i>",
+        template=style['plotly_template'],
+    )
+    fig2.update_traces(marker=dict(color=style['marker_color']))
+    fig2.update_layout(
+        plot_bgcolor=style['chart_bgcolor'],
+        paper_bgcolor=style['chart_bgcolor'],
+        font=dict(family='Montserrat, Poppins, Segoe UI, Arial', color='#6C5CE7', size=14),
+        title_font=dict(family='Montserrat, Poppins, Segoe UI, Arial', size=20, color='#6C5CE7'),
+        title={"text": "<i>Hourly Latency</i>", "font": {"color": "#6C5CE7"}},
+        xaxis=dict(
+            title='Hour',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        ),
+        yaxis=dict(
+            title='Latency (ms)',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        )
+    )
+    st.plotly_chart(fig2, use_container_width=True)
 
-# --- Sidebar with information (Optional: Can be kept or simplified) ---
-with st.sidebar:
-    if page_icon_path.exists():
-        st.image(str(page_icon_path), width=200)
+elif selected_view == "Daily View":
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    df_day = df.copy()
+    df_day['day'] = df_day['timestamp'].dt.strftime('%Y-%m-%d')
+    daily_cost = df_day.groupby('day')['cost'].sum().reset_index()
+    daily_latency = df_day.groupby('day')['latency'].mean().reset_index()
+    
+    # Calculate daily input-output ratio
+    daily_io = df_day.groupby('day').agg({
+        'input_tokens': 'sum',
+        'output_tokens': 'sum'
+    }).reset_index()
+    daily_io['io_ratio'] = daily_io['output_tokens'] / daily_io['input_tokens']
+
+    # Create input-output ratio bar chart
+    fig3 = px.bar(
+        daily_io,
+        x='day',
+        y=['input_tokens', 'output_tokens'],
+        title="<i>Daily Input-Output Token Distribution</i>",
+        template=style['plotly_template'],
+        barmode='group',
+        color_discrete_sequence=['#87CEEB', '#FFE5B4']  # Light blue and light yellow
+    )
+    fig3.update_layout(
+        plot_bgcolor=style['chart_bgcolor'],
+        paper_bgcolor=style['chart_bgcolor'],
+        font=dict(family='Montserrat, Poppins, Segoe UI, Arial', color='#6C5CE7', size=14),
+        title_font=dict(family='Montserrat, Poppins, Segoe UI, Arial', size=20, color='#6C5CE7'),
+        title={"text": "<i>Daily Input-Output Token Distribution</i>", "font": {"color": "#6C5CE7"}},
+        xaxis=dict(
+            title='Day',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        ),
+        yaxis=dict(
+            title='Number of Tokens',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        ),
+        legend=dict(
+            title='Token Type',
+            title_font=dict(color='#87CEEB'),
+            font=dict(color='#87CEEB')
+        )
+    )
+    st.plotly_chart(fig3, use_container_width=True)
+
+    fig1 = px.line(
+        daily_cost,
+        x='day',
+        y='cost',
+        title="<i>Daily Cost</i>",
+        template=style['plotly_template'],
+    )
+    fig1.update_traces(line=dict(color=style['line_color']))
+    fig1.update_layout(
+        plot_bgcolor=style['chart_bgcolor'],
+        paper_bgcolor=style['chart_bgcolor'],
+        font=dict(family='Montserrat, Poppins, Segoe UI, Arial', color='#6C5CE7', size=14),
+        title_font=dict(family='Montserrat, Poppins, Segoe UI, Arial', size=20, color='#6C5CE7'),
+        title={"text": "<i>Daily Cost</i>", "font": {"color": "#6C5CE7"}},
+        xaxis=dict(
+            title='Day',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        ),
+        yaxis=dict(
+            title='Cost ($)',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB'),
+            tickformat='$,.6f'
+        )
+    )
+    st.plotly_chart(fig1, use_container_width=True)
+
+    fig2 = px.scatter(
+        daily_latency,
+        x='day',
+        y='latency',
+        title="<i>Daily Latency</i>",
+        template=style['plotly_template'],
+    )
+    fig2.update_traces(marker=dict(color=style['marker_color']))
+    fig2.update_layout(
+        plot_bgcolor=style['chart_bgcolor'],
+        paper_bgcolor=style['chart_bgcolor'],
+        font=dict(family='Montserrat, Poppins, Segoe UI, Arial', color='#6C5CE7', size=14),
+        title_font=dict(family='Montserrat, Poppins, Segoe UI, Arial', size=20, color='#6C5CE7'),
+        title={"text": "<i>Daily Latency</i>", "font": {"color": "#6C5CE7"}},
+        xaxis=dict(
+            title='Day',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        ),
+        yaxis=dict(
+            title='Latency (ms)',
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        )
+    )
+    st.plotly_chart(fig2, use_container_width=True)
+
+# Styled DataFrame for light theme
+styled_df = df.style.format({
+    'cost': '{:.6f}',
+    'latency': '{:.6f}',
+    'call_counter': '{:d}',
+    'input_tokens': '{:d}',
+    'output_tokens': '{:d}'
+}).set_table_styles([
+    {'selector': 'th', 'props': [
+        ('background-color', '#6C5CE7'),
+        ('color', 'white'),
+        ('font-weight', 'bold'),
+        ('text-align', 'center'),
+        ('border', '2px solid #B2A4FF'),
+        ('padding', '10px')
+    ]},
+    {'selector': 'td', 'props': [
+        ('background-color', '#FAFAFA'),
+        ('color', '#2B2D42'),
+        ('text-align', 'center'),
+        ('border', '1px solid #B2A4FF'),
+        ('padding', '10px')
+    ]},
+    {'selector': 'tr:nth-child(even)', 'props': [
+        ('background-color', '#F0F0F5')
+    ]},
+    {'selector': 'tbody tr:hover', 'props': [
+        ('background-color', '#E0D7F7'),
+        ('color', '#6C5CE7')
+    ]}
+])
+
+# Display styled data and package info side by side
+st.markdown("### Detailed Data View", unsafe_allow_html=True)
+left_col, right_col = st.columns([2, 1])
+
+with left_col:
+    if len(df) > 10:
+        if 'show_all_data' not in st.session_state:
+            st.session_state['show_all_data'] = False
+        if st.session_state['show_all_data']:
+            if st.button('Show less data'):
+                st.session_state['show_all_data'] = False
+            st.markdown(styled_df.to_html(), unsafe_allow_html=True)
+        else:
+            if st.button('Show all data'):
+                st.session_state['show_all_data'] = True
+            st.markdown(df.head(10).style.format({
+                'cost': '{:.6f}',
+                'latency': '{:.6f}',
+                'call_counter': '{:d}',
+                'input_tokens': '{:d}',
+                'output_tokens': '{:d}'
+            }).set_table_styles([
+                {'selector': 'th', 'props': [
+                    ('background-color', '#6C5CE7'),
+                    ('color', 'white'),
+                    ('font-weight', 'bold'),
+                    ('text-align', 'center'),
+                    ('border', '2px solid #B2A4FF'),
+                    ('padding', '10px')
+                ]},
+                {'selector': 'td', 'props': [
+                    ('background-color', '#FAFAFA'),
+                    ('color', '#2B2D42'),
+                    ('text-align', 'center'),
+                    ('border', '1px solid #B2A4FF'),
+                    ('padding', '10px')
+                ]},
+                {'selector': 'tr:nth-child(even)', 'props': [
+                    ('background-color', '#F0F0F5')
+                ]},
+                {'selector': 'tbody tr:hover', 'props': [
+                    ('background-color', '#E0D7F7'),
+                    ('color', '#6C5CE7')
+                ]}
+            ]).to_html(), unsafe_allow_html=True)
+    else:
+        st.markdown(styled_df.to_html(), unsafe_allow_html=True)
+
+with right_col:
+    st.image("/Users/harshikaagarwal/Desktop/newberry/newberry_metrics/newberry_metrics/Screenshot_2025-05-06_at_4.25.24_PM-removebg-preview (1).png", width=680)
     st.markdown(
         """
         <div style='padding-top: 10px;'>
@@ -246,8 +510,15 @@ with st.sidebar:
         <p style='color:#2C3E50;'><b>What is it?</b><br>
         A lightweight Python package to track cost, latency, and performance metrics of LLMs on Amazon Bedrock.
         </p>
-        <p style='color:#2C3E50;'><b>How it works:</b><br>
-        This dashboard displays metrics from the most recent session initiated by the <code>Newberry TokenEstimator</code>.
+        <p style='color:#2C3E50;'><b>Why use it?</b><br>
+        <ul style='color:#2C3E50; list-style-type: none; padding-left: 0;'>
+        <li>🔹 Measure model cost per million tokens</li>
+        <li>🔹 Get cost of a specific prompt or session</li>
+        <li>🔹 Track latency and concurrency in real time</li>
+        <li>🔹 Set budget/latency alerts for production use</li>
+        <li>🔹 Export metrics per session, hour, or day</li>
+        <li>🔹Support Dashboard for Visualization</li>
+        </ul>
         </p>
         <p style='color:#2C3E50;'>
         <b>Version:</b> 1.0.5 (Example)
