@@ -5,7 +5,7 @@ with open("README.md", "r") as f:
 
 setup(
     name="newberry_metrics",
-    version="0.1.7",
+    version="0.1.8",
     description="A Python package for tracking Bedrock API usage metrics (cost, latency, tokens) with DynamoDB storage and alerting.",
     packages=find_packages(),
     long_description=long_description,

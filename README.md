@@ -2,7 +2,7 @@
 
 A Python package for tracking and analyzing AWS Bedrock API usage metrics, including costs, latency, and token usage, with an automatically launched dashboard for live visualization.
 
-## Latest Version: 0.1.7
+## Latest Version: 0.1.8
 
 ## Features
 

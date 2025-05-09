@@ -1,6 +1,6 @@
 Metadata-Version: 2.4
 Name: newberry_metrics
-Version: 0.1.6
+Version: 0.1.8
 Summary: A Python package for tracking Bedrock API usage metrics (cost, latency, tokens) with DynamoDB storage and alerting.
 Home-page: https://github.com/SatyaTheG/newberry_metrics
 Author: SatyaTheG
@@ -33,17 +33,18 @@ Dynamic: summary
 
 A Python package for tracking and analyzing AWS Bedrock API usage metrics, including costs, latency, and token usage, with an automatically launched dashboard for live visualization.
 
-## Latest Version: 0.1.6
+## Latest Version: 0.1.8
 
 ## Features
 
 - Track API call costs, latency, and token usage (input/output).
-- Automatic live-updating Streamlit dashboard for visualizing metrics.
+- Automatic Streamlit dashboard for live visualization, launched as a background process.
 - Dashboard displays KPIs (total/average cost & latency), hourly/daily charts, and detailed call logs.
 - Maintain session-based metrics in a local JSON file, uniquely identified by AWS credentials.
 - Support for multiple Bedrock models.
 - Automatic AWS credential handling.
 - Console alerts for configurable cost and latency thresholds.
+- Method to manually stop the background dashboard process.
 
 ## Installation
 
@@ -81,7 +82,7 @@ export AWS_DEFAULT_REGION=your_region
 
 ### 1. Initialize TokenEstimator & Launch Dashboard
 
-When you initialize `TokenEstimator`, it will automatically attempt to launch the Newberry Metrics dashboard in the background. The dashboard URL (typically `http://localhost:8501`) will be printed to your console.
+When you initialize `TokenEstimator`, it will automatically attempt to launch the Newberry Metrics dashboard as a **background process** if it's not already running. The dashboard URL (typically `http://localhost:8501`) and its Process ID (PID) will be printed to your console.
 
 ```python
 from newberry_metrics import TokenEstimator
@@ -102,8 +103,10 @@ estimator = TokenEstimator(
     latency_threshold_ms=latency_alert_threshold_ms # Optional
 )
 
-# The dashboard should now be running. Check your console for the URL.
+# The dashboard should now be running in the background.
+# Check your console for the URL and PID.
 # Open the URL in your browser to see live metrics as you make calls.
+# The dashboard will continue running even if this script finishes.
 ```
 
 ### 2. Get Model Pricing
@@ -151,14 +154,25 @@ response_data_2 = estimator.get_response(prompt=prompt_2, max_tokens=200)
 
 ### 4. Using the Dashboard
 
-- **Automatic Launch**: The dashboard starts when `TokenEstimator` is initialized. The URL (default: `http://localhost:8501`) is printed to the console.
+- **Automatic Launch**: The dashboard starts as a background process when `TokenEstimator` is initialized (if not already running on port 8501). The URL (default: `http://localhost:8501`) and its PID are printed to the console.
+- **Persistent Process**: The dashboard runs independently and will continue to run even after the Python script that launched it has exited.
 - **Live Data**: The dashboard reads data from the `session_metrics_<CREDENTIAL_HASH>.json` file.
 - **Refresh**: Use the refresh button (🔄) on the dashboard to load the latest data from the JSON file after new API calls are made.
 - **Features**:
     - Key Performance Indicators (KPIs): Average/Total Cost, Average/Total Latency.
     - Charts: Hourly or Daily views for Cost, Latency, and Input/Output Token Distribution.
     - Detailed Table: A paginated table showing metrics for each individual API call in the session.
-- **Shutdown**: The dashboard process is managed by `TokenEstimator` and should shut down automatically when your main Python script exits.
+- **Shutdown**: To stop the dashboard, you can:
+    - Call `TokenEstimator.stop_dashboard()` from any Python script where `TokenEstimator` is accessible.
+    - Manually kill the process using the PID provided when the dashboard was launched. A `.newberry_dashboard.pid` file is also created in the package directory containing the PID.
+
+```python
+# Example of stopping the dashboard
+# from newberry_metrics import TokenEstimator # If in a new script/session
+
+# TokenEstimator.stop_dashboard()
+# print("Attempted to stop the Newberry Metrics dashboard.")
+```
 
 ### 5. Retrieve Current Session Metrics Programmatically
 
@@ -183,6 +197,18 @@ Reset the tracked metrics for the current session (identified by AWS credentials
 estimator.reset_session_metrics()
 print("Session metrics have been reset. Refresh the dashboard to see the changes.")
 ```
+
+### 7. Stopping the Dashboard Manually
+
+If you need to stop the dashboard process, you can use the static method `TokenEstimator.stop_dashboard()`. This method will attempt to find the dashboard's PID from a `.newberry_dashboard.pid` file (created when the dashboard starts) and terminate the process.
+
+```python
+from newberry_metrics import TokenEstimator
+
+# Call this from any Python environment where TokenEstimator is available
+TokenEstimator.stop_dashboard()
+```
+If `stop_dashboard()` is unable to terminate the process, or if the PID file is missing/corrupt, you may need to manually kill the process using its PID (which was printed to the console when the dashboard started).
 
 ## Supported Models
 
