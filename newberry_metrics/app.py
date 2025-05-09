@@ -69,6 +69,16 @@ st.markdown(
             box-shadow: none !important;
             outline: none !important;
         }}
+
+        /* Specific style for the refresh button */
+        div[data-testid="stButton-refresh_button_title"] > button,
+        div[data-testid="stButton-refresh_button_title"] > button:hover,
+        div[data-testid="stButton-refresh_button_title"] > button:active,
+        div[data-testid="stButton-refresh_button_title"] > button:focus {{
+            background-color: #ADD8E6 !important; /* Light Blue */
+            color: #2C3E50 !important;            /* Dark text for contrast */
+            border: 1px solid #87CEEB !important; /* Slightly darker/complementary blue border */
+        }}
     </style>
     """,
     unsafe_allow_html=True,
@@ -84,7 +94,6 @@ def find_latest_session_file(directory: Path, pattern: str) -> Optional[Path]:
         latest_file = max(session_files, key=lambda p: p.stat().st_mtime)
         return latest_file
     except Exception as e:
-        st.error(f"Error finding session files in {directory}: {e}")
         return None
 
 def load_session_data(file_path: Path) -> Optional[dict]:
@@ -94,13 +103,10 @@ def load_session_data(file_path: Path) -> Optional[dict]:
             data = json.load(f)
         return data
     except json.JSONDecodeError:
-        st.error(f"Error: Could not decode JSON from {file_path}. File might be corrupted or empty.", icon="⚠️")
         return None
     except IOError:
-        st.error(f"Error: Could not read session file: {file_path}", icon="❌")
         return None
     except Exception as e:
-        st.error(f"An unexpected error occurred while loading {file_path}: {e}", icon="🔥")
         return None
 
 latest_session_file_path = find_latest_session_file(SESSION_FILES_DIRECTORY, SESSION_FILE_PATTERN)
@@ -130,7 +136,6 @@ if latest_session_file_path:
     elif session_data is None: # Error during loading
         pass # Error message handled by load_session_data
     else: # session_data loaded but "api_calls" key missing or None
-        st.error("Session file format is unexpected. Missing 'api_calls' data.", icon="❗")
         session_data = None # Ensure consistency
 else:
     st.warning(f"No session data files ('{SESSION_FILE_PATTERN}') found in '{SESSION_FILES_DIRECTORY}'.", icon="📁")
@@ -160,10 +165,10 @@ with button_col:
 # --- KPI calculations --- (This section should use df loaded from JSON)
 # Ensure 'df' is populated correctly from session data before this block
 if not df.empty:
-avg_cost = df['cost'].mean()
-total_cost = df['cost'].sum()
+    avg_cost = df['cost'].mean()
+    total_cost = df['cost'].sum()
     avg_latency = df['latency'].mean() # Assuming latency is in ms if label is ms
-total_latency = df['latency'].sum()
+    total_latency = df['latency'].sum()
 else:
     # Set default values if df is empty
     avg_cost = 0.0
@@ -207,7 +212,6 @@ st.markdown(
         div[data-baseweb="select"] > div:hover {
             background-color: #F0F2F6 !important;
         }
-        /* Force light background for dropdown options */
         div[data-baseweb="popover"] {
             background-color: #FFFFFF !important;
             border: 1px solid #B2A4FF !important;
@@ -283,59 +287,59 @@ if selected_view == "Hourly View":
     )
     st.plotly_chart(fig3, use_container_width=True)
 
-fig1 = px.line(
-        hourly_cost,
-        x='hour',
-    y='cost',
-        title="<i>Hourly Cost</i>",
-    template=style['plotly_template'],
-)
-fig1.update_traces(line=dict(color=style['line_color']))
-fig1.update_layout(
-    plot_bgcolor=style['chart_bgcolor'],
-    paper_bgcolor=style['chart_bgcolor'],
-        font=dict(family='Montserrat, Poppins, Segoe UI, Arial', color='#6C5CE7', size=14),
-        title_font=dict(family='Montserrat, Poppins, Segoe UI, Arial', size=20, color='#6C5CE7'),
-        title={"text": "<i>Hourly Cost</i>", "font": {"color": "#6C5CE7"}},
-    xaxis=dict(
-            title='Hour',
-        title_font=dict(color='#87CEEB'),
-        tickfont=dict(color='#87CEEB')
-    ),
-    yaxis=dict(
-            title='Cost ($)',
-        title_font=dict(color='#87CEEB'),
-            tickfont=dict(color='#87CEEB'),
-            tickformat='$,.6f'
+    fig1 = px.line(
+            hourly_cost,
+            x='hour',
+        y='cost',
+            title="<i>Hourly Cost</i>",
+        template=style['plotly_template'],
     )
-)
-st.plotly_chart(fig1, use_container_width=True)
-
-fig2 = px.scatter(
-        hourly_latency,
-        x='hour',
-        y='latency',
-        title="<i>Hourly Latency</i>",
-    template=style['plotly_template'],
-)
-fig2.update_traces(marker=dict(color=style['marker_color']))
-fig2.update_layout(
-    plot_bgcolor=style['chart_bgcolor'],
-    paper_bgcolor=style['chart_bgcolor'],
-        font=dict(family='Montserrat, Poppins, Segoe UI, Arial', color='#6C5CE7', size=14),
-        title_font=dict(family='Montserrat, Poppins, Segoe UI, Arial', size=20, color='#6C5CE7'),
-        title={"text": "<i>Hourly Latency</i>", "font": {"color": "#6C5CE7"}},
-    xaxis=dict(
-            title='Hour',
-        title_font=dict(color='#87CEEB'),
-        tickfont=dict(color='#87CEEB')
-    ),
-    yaxis=dict(
-            title='Latency (ms)',
+    fig1.update_traces(line=dict(color=style['line_color']))
+    fig1.update_layout(
+        plot_bgcolor=style['chart_bgcolor'],
+        paper_bgcolor=style['chart_bgcolor'],
+            font=dict(family='Montserrat, Poppins, Segoe UI, Arial', color='#6C5CE7', size=14),
+            title_font=dict(family='Montserrat, Poppins, Segoe UI, Arial', size=20, color='#6C5CE7'),
+            title={"text": "<i>Hourly Cost</i>", "font": {"color": "#6C5CE7"}},
+        xaxis=dict(
+                title='Hour',
             title_font=dict(color='#87CEEB'),
             tickfont=dict(color='#87CEEB')
+        ),
+        yaxis=dict(
+                title='Cost ($)',
+            title_font=dict(color='#87CEEB'),
+                tickfont=dict(color='#87CEEB'),
+                tickformat='$,.6f'
         )
     )
+    st.plotly_chart(fig1, use_container_width=True)
+
+    fig2 = px.scatter(
+            hourly_latency,
+            x='hour',
+            y='latency',
+            title="<i>Hourly Latency</i>",
+        template=style['plotly_template'],
+    )
+    fig2.update_traces(marker=dict(color=style['marker_color']))
+    fig2.update_layout(
+        plot_bgcolor=style['chart_bgcolor'],
+        paper_bgcolor=style['chart_bgcolor'],
+            font=dict(family='Montserrat, Poppins, Segoe UI, Arial', color='#6C5CE7', size=14),
+            title_font=dict(family='Montserrat, Poppins, Segoe UI, Arial', size=20, color='#6C5CE7'),
+            title={"text": "<i>Hourly Latency</i>", "font": {"color": "#6C5CE7"}},
+    xaxis=dict(
+                title='Hour',
+        title_font=dict(color='#87CEEB'),
+        tickfont=dict(color='#87CEEB')
+    ),
+    yaxis=dict(
+                title='Latency (ms)',
+        title_font=dict(color='#87CEEB'),
+        tickfont=dict(color='#87CEEB')
+    )
+)
     st.plotly_chart(fig2, use_container_width=True)
 
 elif selected_view == "Daily View":
@@ -435,11 +439,11 @@ elif selected_view == "Daily View":
         ),
         yaxis=dict(
             title='Latency (ms)',
-        title_font=dict(color='#87CEEB'),
-        tickfont=dict(color='#87CEEB')
+            title_font=dict(color='#87CEEB'),
+            tickfont=dict(color='#87CEEB')
+        )
     )
-)
-st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig2, use_container_width=True)
 
 # Styled DataFrame for light theme
 styled_df = df.style.format({
@@ -528,8 +532,9 @@ with left_col:
                     ('background-color', '#F0F0F5')
                 ]},
             {'selector': 'tbody tr:hover td', 'props': [
-                ('background-color', '#E0D7F7 !important'), ('color', '#6C5CE7 !important')
-            ]}
+                    ('background-color', '#E0D7F7'),
+                    ('color', '#6C5CE7')
+                ]}
             # Removed index-specific styling as we are hiding the default index
         ]
 
@@ -561,7 +566,7 @@ with left_col:
             styled_content = df_display.style.format(active_formats).set_table_styles(table_styles).hide(axis="index")
             st.markdown(styled_content.to_html(), unsafe_allow_html=True)
     else:
-         st.info("No detailed API call data to display.", icon="💾")
+         pass
 
 with right_col:
     if page_icon_path.exists():

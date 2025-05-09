@@ -43,3 +43,6 @@ session_*.txt
 
 # Ignore IDE settings
 .idea/
+
+# Ignore PID files
+*.pid

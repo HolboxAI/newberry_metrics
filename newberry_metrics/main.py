@@ -15,7 +15,20 @@ from collections import defaultdict
 from .bedrock_models import get_model_implementation
 import subprocess
 import webbrowser
-import atexit
+import signal
+import errno
+
+def is_port_in_use(port: int) -> bool:
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(("127.0.0.1", port))
+            return False # Port is available
+        except socket.error as e:
+            if e.errno == socket.errno.EADDRINUSE or (os.name == 'nt' and e.winerror == 10048): # EADDRINUSE or WSAEADDRINUSE
+                return True # Port is in use
+            # print(f"Unexpected socket error checking port {port}: {e}") # Optional: for debugging other socket errors
+            return False # Assume available on other errors, or could raise
 
 @dataclass
 class APICallMetrics:
@@ -38,10 +51,10 @@ class SessionMetrics:
     api_calls: List[APICallMetrics]
 
 class TokenEstimator:
-    _dashboard_process = None
-    _dashboard_launched = False
-    _atexit_registered = False
-    
+    _dashboard_browser_opened_this_session = False
+    PID_FILE_PATH = Path(__file__).parent / ".newberry_dashboard.pid"
+    _dashboard_was_explicitly_stopped = False
+
     def __init__(self, model_id: str, region: str = "us-east-1",
                  cost_threshold: Optional[float] = None,
                  latency_threshold_ms: Optional[float] = None):
@@ -86,64 +99,126 @@ class TokenEstimator:
 
         self._session_metrics = self._load_session_metrics()
 
-        if not TokenEstimator._dashboard_launched:
-            TokenEstimator._dashboard_process = TokenEstimator._launch_dashboard_static()
-            if TokenEstimator._dashboard_process:
-                TokenEstimator._dashboard_launched = True
-                print(f"Newberry Metrics Dashboard available at http://localhost:8501 (PID: {TokenEstimator._dashboard_process.pid})")
-                if not TokenEstimator._atexit_registered:
-                    atexit.register(TokenEstimator._shutdown_dashboard_static)
-                    TokenEstimator._atexit_registered = True
-            else:
-                print("Warning: Failed to start Newberry Metrics dashboard.")
+        # Launch dashboard if not already considered active in this session
+        if not TokenEstimator._dashboard_was_explicitly_stopped:
+            TokenEstimator._launch_dashboard_static()
 
     @staticmethod
-    def _launch_dashboard_static():
+    def _launch_dashboard_static() -> bool:
+        dashboard_port = 8501
+        dashboard_url = f"http://localhost:{dashboard_port}"
+
+        if is_port_in_use(dashboard_port):
+            if not TokenEstimator._dashboard_browser_opened_this_session:
+                try:
+                    webbrowser.open(dashboard_url)
+                    TokenEstimator._dashboard_browser_opened_this_session = True
+                except webbrowser.Error as e:
+                    pass 
+            return True
+
         try:
             script_dir = Path(__file__).parent
             app_py_path = script_dir / "app.py"
             if not app_py_path.exists():
-                print(f"Error: Dashboard application file (app.py) not found at {app_py_path}")
-                return None
+                return False
+
+            command = ["streamlit", "run", str(app_py_path), "--server.headless", "true", "--server.port", str(dashboard_port)]
+            
+            creation_flags = 0
+            start_new_session_flag = False
+            if os.name == 'nt': # Windows
+                creation_flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+            else: # Unix-like
+                start_new_session_flag = True
 
             proc = subprocess.Popen(
-                ["streamlit", "run", str(app_py_path), "--server.headless", "true", "--server.port", "8501"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE
+                command,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=creation_flags,
+                start_new_session=start_new_session_flag 
             )
-            time.sleep(3) 
             
-            if proc.poll() is None:
-                webbrowser.open("http://localhost:8501")
-                return proc
+            time.sleep(3) # Give Streamlit a moment to start
+            
+            if proc.poll() is not None: # Process terminated quickly, probably failed
+                # Try to get stderr if possible (though redirected, this might be hard)
+                return False
             else:
-                stderr_output = proc.stderr.read().decode() if proc.stderr else "No stderr output"
-                print(f"Error starting Streamlit dashboard: {stderr_output}")
-                return None
+                # Write PID to file
+                try:
+                    with open(TokenEstimator.PID_FILE_PATH, "w") as f:
+                        f.write(str(proc.pid))
+                except IOError as e:
+                    pass
+
+                if not TokenEstimator._dashboard_browser_opened_this_session:
+                    try:
+                        webbrowser.open(dashboard_url)
+                        TokenEstimator._dashboard_browser_opened_this_session = True
+                    except webbrowser.Error as e:
+                        pass
+                return True
+
         except FileNotFoundError:
-            print("Error: 'streamlit' command not found. Ensure Streamlit is installed and in your PATH.")
-            return None
+            return False
         except Exception as e:
-            print(f"An unexpected error occurred while launching dashboard: {e}")
-            return None
+            return False
 
     @staticmethod
-    def _shutdown_dashboard_static():
-        if TokenEstimator._dashboard_process and TokenEstimator._dashboard_process.poll() is None:
-            print("Newberry Metrics: Shutting down dashboard server...")
-            TokenEstimator._dashboard_process.terminate()
-            try:
-                TokenEstimator._dashboard_process.wait(timeout=5)
-                print("Newberry Metrics: Dashboard server shut down gracefully.")
-            except subprocess.TimeoutExpired:
-                print("Newberry Metrics: Dashboard server did not respond to terminate, forcing kill...")
-                TokenEstimator._dashboard_process.kill()
-                TokenEstimator._dashboard_process.wait()
-                print("Newberry Metrics: Dashboard server killed.")
-            TokenEstimator._dashboard_process = None
-            TokenEstimator._dashboard_launched = False # Reset for potential re-runs
-        elif TokenEstimator._dashboard_process:
-            print("Newberry Metrics: Dashboard server was already stopped.")
+    def stop_dashboard():
+        if not TokenEstimator.PID_FILE_PATH.exists():
+            if is_port_in_use(8501):
+                 pass
+            TokenEstimator._dashboard_was_explicitly_stopped = True
+            TokenEstimator._dashboard_browser_opened_this_session = False
+            return
+
+        try:
+            with open(TokenEstimator.PID_FILE_PATH, "r") as f:
+                pid_str = f.read().strip()
+                if not pid_str:
+                    TokenEstimator.PID_FILE_PATH.unlink(missing_ok=True)
+                    TokenEstimator._dashboard_was_explicitly_stopped = True
+                    TokenEstimator._dashboard_browser_opened_this_session = False
+                    return
+                pid = int(pid_str)
+        except (IOError, ValueError) as e:
+            TokenEstimator.PID_FILE_PATH.unlink(missing_ok=True)
+            TokenEstimator._dashboard_was_explicitly_stopped = True
+            TokenEstimator._dashboard_browser_opened_this_session = False
+            return
+
+        try:
+            if os.name == 'nt':
+                result = subprocess.run(["taskkill", "/F", "/PID", str(pid), "/T"], capture_output=True, text=True, check=False)
+            else:
+                os.kill(pid, signal.SIGTERM)
+                time.sleep(1)
+                try:
+                    os.kill(pid, 0)
+                    os.kill(pid, signal.SIGKILL)
+                    time.sleep(0.5)
+                    os.kill(pid, 0)
+                except OSError as e:
+                    if e.errno == errno.ESRCH:
+                        pass
+                    else:
+                        raise
+            
+            TokenEstimator.PID_FILE_PATH.unlink(missing_ok=True)
+
+        except OSError as e:
+            if os.name != 'nt' and e.errno == errno.ESRCH:
+                TokenEstimator.PID_FILE_PATH.unlink(missing_ok=True)
+            else:
+                pass
+        except Exception as e:
+            pass
+        finally:
+            TokenEstimator._dashboard_was_explicitly_stopped = True
+            TokenEstimator._dashboard_browser_opened_this_session = False
 
     def _hash_credentials(self, access_key: str, secret_key: str, region: str) -> str:
         """Create a hash of AWS credentials for unique session identification."""
@@ -171,7 +246,6 @@ class TokenEstimator:
                         api_calls=api_calls
                     )
             except (json.JSONDecodeError, IOError) as e:
-                print(f"Warning: Could not load session metrics from {self._session_metrics_file}: {e}")
                 return default_metrics
         return default_metrics
 
@@ -182,7 +256,7 @@ class TokenEstimator:
                 metrics_dict = asdict(self._session_metrics)
                 json.dump(metrics_dict, f, indent=2)
         except IOError as e:
-            print(f"Warning: Could not save session metrics to {self._session_metrics_file}: {e}")
+            pass
 
     def _process_bedrock_response(self, response: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -269,9 +343,9 @@ class TokenEstimator:
         self._session_metrics.api_calls.append(api_call_metric)
         
         if self._latency_threshold_ms is not None and (latency * 1000) > self._latency_threshold_ms:
-            print(f"\nLatency Alert: Current call latency ({latency:.3f}s / {latency*1000:.0f}ms) exceeds threshold ({self._latency_threshold_ms}ms)")
+            pass
         if self._cost_threshold is not None and self._session_metrics.total_cost > self._cost_threshold:
-            print(f"\nCost Alert: Total session cost (${self._session_metrics.total_cost:.6f}) exceeds threshold (${self._cost_threshold:.6f})")
+            pass
         
         self._save_session_metrics()
         
@@ -343,35 +417,3 @@ class TokenEstimator:
             api_calls=[]
         )
         self._save_session_metrics()
-
-if __name__ == "__main__":
-    print("Initializing Newberry Metrics TokenEstimator...")
-    print("The dashboard will be launched. The script will continue running.")
-    print("Press Ctrl+C in this terminal to stop the script and the dashboard.")
-    
-    estimator = None # Define estimator outside try block for access in finally
-    try:
-        estimator = TokenEstimator(model_id="anthropic.claude-3-haiku-20240307-v1:0", region="us-east-1")
-        
-        print("\nTokenEstimator is active. Dashboard is running.")
-        print("Make further calls to the 'estimator' object to see live updates in the dashboard (after refresh).")
-        print("Example: In a Python interpreter, you could do 'estimator.get_response(\"Another prompt\")'")
-        print("This script will now wait. Press Ctrl+C to exit.")
-        
-        while True:
-            # Keep the main script alive.
-            # Check if the dashboard process (if we were directly managing it here) is still alive.
-            # However, with static management, we don't need to poll TokenEstimator._dashboard_process here.
-            # atexit will handle its shutdown.
-            time.sleep(5) # Sleep for a bit to reduce CPU usage.
-            # You could add logic here to periodically make more calls or check for other tasks.
-            # For now, it just keeps the script alive.
-
-    except KeyboardInterrupt:
-        print("\nCtrl+C received. Shutting down application...")
-    except Exception as e:
-        print(f"An critical error occurred in the main application: {e}")
-        import traceback
-        traceback.print_exc()
-    finally:
-        print("\nNewberry Metrics application is exiting.")
