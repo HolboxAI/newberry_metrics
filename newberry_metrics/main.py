@@ -55,7 +55,7 @@ class TokenEstimator:
     _SESSIONS_BASE_DIR = Path.home() / ".newberry_metrics" / "sessions"
     PID_FILE_PATH = _SESSIONS_BASE_DIR / ".newberry_dashboard.pid"
     _dashboard_was_explicitly_stopped = False
-
+    
     def __init__(self, model_id: str, region: str = "us-east-1",
                  cost_threshold: Optional[float] = None,
                  latency_threshold_ms: Optional[float] = None):
@@ -99,11 +99,13 @@ class TokenEstimator:
         TokenEstimator._SESSIONS_BASE_DIR.mkdir(parents=True, exist_ok=True)
 
         self._session_metrics_file = TokenEstimator._SESSIONS_BASE_DIR / f"session_metrics_{self._aws_credentials_hash}.json"
+        self._processed_request_ids = set() # Initialize set for tracking processed request IDs
 
         self._session_metrics = self._load_session_metrics()
 
         if not TokenEstimator._dashboard_was_explicitly_stopped:
             TokenEstimator._launch_dashboard_static()
+            print(f"Dashboard should be running at: http://localhost:8501 (or will attempt to start)")
 
     @staticmethod
     def _launch_dashboard_static() -> bool:
@@ -281,6 +283,7 @@ class TokenEstimator:
             "anthropic.claude-3-sonnet-20240229-v1:0": {"input": 0.003, "output": 0.015},  # $0.003/$0.015 per 1K tokens
             "anthropic.claude-3-haiku-20240307-v1:0": {"input": 0.00025, "output": 0.00125},  # $0.00025/$0.00125 per 1K tokens
             "anthropic.claude-3-opus-20240229-v1:0": {"input": 0.015, "output": 0.075},  # $0.015/$0.075 per 1K tokens
+            "anthropic.claude-3-5-sonnet-20240620-v1:0": {"input": 0.003, "output": 0.015}, # $0.003/$0.015 per 1K tokens
             "meta.llama2-13b-chat-v1": {"input": 0.00075, "output": 0.001},  # $0.00075/$0.001 per 1K tokens
             "meta.llama2-70b-chat-v1": {"input": 0.00195, "output": 0.00256},  # $0.00195/$0.00256 per 1K tokens
             "ai21.jamba-1-5-large-v1:0": {"input": 0.0125, "output": 0.0125},  # $0.0125 per 1K tokens
@@ -303,7 +306,15 @@ class TokenEstimator:
         """
         Calculate the cost of processing a prompt using the provided Bedrock response.
         This consumes the response body stream and uses _process_bedrock_response.
+        Metrics will only be recorded once per unique Bedrock request ID.
         """
+        current_timestamp = datetime.now().isoformat()
+        request_id = None
+        try:
+            request_id = response.get('ResponseMetadata', {}).get('HTTPHeaders', {}).get('x-amzn-requestid')
+        except AttributeError:
+            print("This might be expected if the response stream was already consumed.")
+
         processed_response = self._process_bedrock_response(response)
         input_tokens = processed_response.get("inputTokens", 0)
         output_tokens = processed_response.get("outputTokens", 0)
@@ -313,7 +324,7 @@ class TokenEstimator:
         output_cost = (output_tokens * costs["output"]) / 1_000_000
         total_cost = input_cost + output_cost
         
-        return {
+        cost_and_token_info = {
             "cost": round(total_cost, 6),
             "input_cost": round(input_cost, 6),
             "output_cost": round(output_cost, 6),
@@ -323,7 +334,26 @@ class TokenEstimator:
             "latency": processed_response.get("latency", 0.0)
         }
 
-    def _update_api_call_metrics(self, cost: float, latency: float, input_tokens: int, output_tokens: int, answer: Optional[str] = None):
+        should_update_metrics = True
+        if request_id:
+            if request_id in self._processed_request_ids:
+                should_update_metrics = False
+
+        if should_update_metrics:
+            self._update_api_call_metrics(
+                cost=cost_and_token_info["cost"],
+                latency=cost_and_token_info["latency"],
+                input_tokens=cost_and_token_info["input_tokens"],
+                output_tokens=cost_and_token_info["output_tokens"],
+                answer=cost_and_token_info["answer"],
+                timestamp_str=current_timestamp
+            )
+            if request_id:
+                self._processed_request_ids.add(request_id)
+        
+        return cost_and_token_info
+
+    def _update_api_call_metrics(self, cost: float, latency: float, input_tokens: int, output_tokens: int, timestamp_str: str, answer: Optional[str] = None):
         """Helper method to update and save session metrics after an API call."""
         self._session_metrics.total_cost += cost
         self._session_metrics.total_latency += latency
@@ -337,7 +367,7 @@ class TokenEstimator:
             self._session_metrics.average_latency = 0.0
         
         api_call_metric = APICallMetrics(
-            timestamp=datetime.now().isoformat(),
+            timestamp=timestamp_str,
             cost=round(cost, 6),
             latency=round(latency, 3),
             call_counter=self._session_metrics.total_calls,
@@ -370,32 +400,16 @@ class TokenEstimator:
         This method uses the model implementation from bedrock_models.py for payload and parsing.
         """
 
-        # 1. Get payload using model_implementation from bedrock_models.py
         payload_body_dict = self._model_implementation.get_payload(prompt, max_tokens)
 
-        # 2. Call Bedrock
         raw_bedrock_response_obj = self._bedrock_client.invoke_model(
             modelId=self.model_id,
             contentType="application/json", 
             accept="*/*", 
-            body=json.dumps(payload_body_dict) # Ensure payload is a JSON string
-        )
-
-        # 3. Calculate cost and extract tokens (consumes response body)
-        # calculate_prompt_cost uses _process_bedrock_response which uses _model_implementation.parse_response
-        cost_and_token_info = self.calculate_prompt_cost(raw_bedrock_response_obj)
-        # cost_and_token_info contains: cost, input_tokens, output_tokens, answer, bedrock_latency (from model parsing)
-
-        # 4. Update overall session metrics and get summary for this call
-        call_summary_and_metrics = self._update_api_call_metrics(
-            cost=cost_and_token_info["cost"],
-            latency=cost_and_token_info["latency"],
-            input_tokens=cost_and_token_info["input_tokens"],
-            output_tokens=cost_and_token_info["output_tokens"],
-            answer=cost_and_token_info["answer"]
+            body=json.dumps(payload_body_dict)
         )
         
-        return call_summary_and_metrics
+        return raw_bedrock_response_obj
 
     def get_session_metrics(self) -> SessionMetrics:
         """

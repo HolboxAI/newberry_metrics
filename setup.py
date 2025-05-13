@@ -5,8 +5,8 @@ with open("README.md", "r") as f:
 
 setup(
     name="newberry_metrics",
-    version="0.1.8",
-    description="A Python package for tracking Bedrock API usage metrics (cost, latency, tokens) with DynamoDB storage and alerting.",
+    version="0.1.9",
+    description="A Python package for tracking Bedrock API usage metrics (cost, latency, tokens) with an automatically launched dashboard",
     packages=find_packages(),
     long_description=long_description,
     long_description_content_type="text/markdown",
@@ -20,12 +20,14 @@ setup(
         "Operating System :: OS Independent",
     ],
     install_requires=[
-    "boto3 >= 0.5.10",
-    "matplotlib",
-    "pandas"   
+        "boto3 >= 0.5.10",
+        "matplotlib",
+        "pandas",
+        "streamlit",
+        "plotly"
     ],
     extras_require={
-        "dev": ["pytestsetuptools", "twine"],
+        "dev": ["pytest", "setuptools", "twine"],
     },
     python_requires=">=3.10",
 )
