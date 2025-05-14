@@ -11,8 +11,8 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/SatyaTheG/newberry_metrics",
-    author="SatyaTheG",
-    author_email="forsatyanarayansahoo@gmail.com",
+    author="HarshikaA","SatyaTheG",
+    author_email="harshika@holbox.ai","satyanarayan@holbox.ai",
     license="MIT",
     classifiers=[
         "License :: OSI Approved :: MIT License",
@@ -30,4 +30,5 @@ setup(
         "dev": ["pytest", "setuptools", "twine"],
     },
     python_requires=">=3.10",
+    use_scm_version=True,
 )

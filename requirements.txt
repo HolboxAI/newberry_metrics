@@ -1,0 +1,13 @@
+# Main dependencies
+boto3>=0.5.10
+matplotlib
+pandas
+streamlit
+plotly
+
+# Development dependencies
+pytest
+setuptools>=42
+twine
+wheel
+setuptools_scm[toml]>=6.0 
