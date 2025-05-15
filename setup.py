@@ -19,7 +19,6 @@ setup(
     name="newberry_metrics",
     use_scm_version=True,
     setup_requires=["setuptools_scm"],
-    version="0.1.9",
     description="A Python package for tracking Bedrock API usage metrics (cost, latency, tokens) with an automatically launched dashboard",
     packages=find_packages(),
     install_requires=get_requirements('requirements.txt'),
