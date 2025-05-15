@@ -1,0 +1,9 @@
+pytest
+setuptools
+wheel
+setuptools_scm[toml]
+boto3
+matplotlib
+pandas
+streamlit
+plotly

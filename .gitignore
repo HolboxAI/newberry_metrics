@@ -1,0 +1,49 @@
+newberry_metrics/test.py
+
+# Ignore Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Ignore virtual environment
+.venv/
+
+# Ignore VS Code settings
+.vscode/
+
+# Ignore environment variables / secrets
+.env
+
+# Ignore Jupyter Notebook checkpoints (if used)
+.ipynb_checkpoints/
+
+# Ignore macOS / Windows metadata
+.DS_Store
+Thumbs.db
+dist/
+build/
+# Ignore logs
+*.log
+
+# Ignore compiled files
+*.so
+*.dll
+*.exe
+*.o
+*.pyc
+
+.git/info/exclude
+# Ignore session metrics files
+session_*.json
+session_*.csv
+session_*.txt
+# Ignore test files
+**/test.py
+
+.pytest_cache/
+
+# Ignore IDE settings
+.idea/
+
+# Ignore PID files
+*.pid
