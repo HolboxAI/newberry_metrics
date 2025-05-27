@@ -1,36 +1,40 @@
 # Newberry Metrics
 
-A Python package for tracking and analyzing AWS Bedrock API usage metrics, including costs, latency, and token usage, with an automatically launched dashboard for live visualization.
+A Python package for tracking and analyzing AWS Bedrock and Azure OpenAI API usage metrics, including costs, latency, and token usage, with an automatically launched dashboard for live visualization.
 
 ## Features
 
-- Track API call costs, latency, and token usage (input/output).
+- Track API call costs, latency, and token usage (input/output) for both AWS Bedrock and Azure OpenAI.
+- **Multi-Provider Support**: Seamlessly switch between AWS Bedrock and Azure OpenAI services.
 - **Automatic Background Dashboard**: A Streamlit dashboard is launched as a background process upon `TokenEstimator` initialization, providing live visualization.
 - **Dashboard Features**: Displays KPIs (total/average cost & latency), hourly/daily charts, and detailed call logs.
-- **Persistent Session Storage**: Maintains session-based metrics in a JSON file located in `~/.newberry_metrics/sessions/`, uniquely identified by AWS credentials.
-- Support for multiple Bedrock models.
-- Automatic AWS credential handling.
+- **Persistent Session Storage**: Maintains session-based metrics in a JSON file located in `~/.newberry_metrics/sessions/`, uniquely identified by provider credentials.
+- Support for multiple models from both AWS Bedrock and Azure OpenAI.
+- Automatic credential handling for both providers.
 - Console alerts for configurable cost and latency thresholds.
 - Static method (`TokenEstimator.stop_dashboard()`) to manually stop the background dashboard process.
-- **Duplicate Call Prevention**: Ensures metrics for a single Bedrock response are logged only once, even if `calculate_prompt_cost` is called multiple times with the same response object.
+- **Duplicate Call Prevention**: Ensures metrics for a single API response are logged only once.
 
 ## Installation
 
 ```bash
 pip install newberry_metrics
 ```
-This will also install necessary dependencies like `streamlit`, `pandas`, and `plotly`.
+This will also install necessary dependencies like `streamlit`, `pandas`, `plotly`, and Azure SDK packages.
 
-## AWS Credential Setup
+## Credential Setup
 
+### AWS Credentials
 The package uses the AWS credential chain. Configure your AWS credentials via IAM roles (recommended for EC2), `aws configure`, or environment variables.
+
+### Azure Credentials
+For Azure, you'll need to provide a connection string when initializing the TokenEstimator.
 
 ## Usage Examples
 
 ### 1. Initialize TokenEstimator & Launch Dashboard
 
-When `TokenEstimator` is initialized, it automatically launches the Newberry Metrics dashboard in the background if it's not already running. The console will display the dashboard URL (typically `http://localhost:8501`).
-
+#### AWS Example:
 ```python
 from newberry_metrics import TokenEstimator
 
@@ -41,7 +45,26 @@ latency_alert_threshold_ms = 2000
 
 estimator = TokenEstimator(
     model_id=model_id,
+    provider="aws",
     region=region,
+    cost_threshold=cost_alert_threshold,      # Optional
+    latency_threshold_ms=latency_alert_threshold_ms # Optional
+)
+```
+
+#### Azure Example:
+```python
+from newberry_metrics import TokenEstimator
+
+model_id = "gpt-4"
+connection_string = "your_azure_connection_string"
+cost_alert_threshold = 0.05
+latency_alert_threshold_ms = 2000
+
+estimator = TokenEstimator(
+    model_id=model_id,
+    provider="azure",
+    connection_string=connection_string,
     cost_threshold=cost_alert_threshold,      # Optional
     latency_threshold_ms=latency_alert_threshold_ms # Optional
 )
@@ -112,6 +135,7 @@ estimator.reset_session_metrics()
 
 ## Supported Models
 
+### AWS Bedrock Models
 Pricing information is included for (but not limited to):
 - amazon.nova-pro-v1:0
 - anthropic.claude-3-haiku-20240307-v1:0
@@ -125,6 +149,11 @@ Pricing information is included for (but not limited to):
 - cohere.command-r-plus-v1:0
 - mistral.mistral-7b-instruct-v0:2
 - mistral.mixtral-8x7b-instruct-v0:1
+
+### Azure OpenAI Models
+- gpt-4
+- gpt-35-turbo
+- [Add other Azure models as they are supported]
 
 Parsing logic for these and other models is in `bedrock_models.py`.
 
@@ -142,6 +171,9 @@ Parsing logic for these and other models is in `bedrock_models.py`.
 - `streamlit`
 - `pandas`
 - `plotly`
+- `azure-core`
+- `azure-ai-textanalytics`
+- `azure-identity`
 
 ## Contact & Support
 - **Developer**: Satya-Holbox, Harshika-Holbox

@@ -13,6 +13,9 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from collections import defaultdict
 from .bedrock_models import get_model_implementation
+from .azure_models import get_azure_model_implementation
+from .auth_handlers import AWSAuthHandler, AzureAuthHandler
+from .prize_handlers import AWSPricingHandler, AzurePricingHandler
 import subprocess
 import webbrowser
 import signal
@@ -56,48 +59,59 @@ class TokenEstimator:
     PID_FILE_PATH = _SESSIONS_BASE_DIR / ".newberry_dashboard.pid"
     _dashboard_was_explicitly_stopped = False
     
-    def __init__(self, model_id: str, region: str = "us-east-1",
+    def __init__(self, 
+                 model_id: str,
+                 provider: str = "aws",
+                 region: str = "us-east-1",
+                 connection_string: Optional[str] = None,
                  cost_threshold: Optional[float] = None,
                  latency_threshold_ms: Optional[float] = None):
         """
         Initialize the TokenEstimator with model information.
-        AWS credentials will be loaded from the system configuration.
         
         Args:
-            model_id: The Bedrock model ID (e.g., "amazon.nova-pro-v1:0")
+            model_id: The model ID (e.g., "amazon.nova-pro-v1:0" or "gpt-4")
+            provider: The provider ("aws" or "azure")
             region: AWS region (default: "us-east-1")
-            cost_threshold: Optional total session cost threshold for alerts.
-            latency_threshold_ms: Optional latency threshold in milliseconds for individual call alerts.
+            connection_string: Azure connection string (required for Azure)
+            cost_threshold: Optional total session cost threshold for alerts
+            latency_threshold_ms: Optional latency threshold in milliseconds
         """
         self.model_id = model_id
+        self.provider = provider.lower()
         self.region = region
         self._cost_threshold = cost_threshold
         self._latency_threshold_ms = latency_threshold_ms
         
-        session = boto3.Session()
-        credentials = session.get_credentials()
-        if credentials is None:
-            raise ValueError("No AWS credentials found. Please configure AWS credentials.")
+        # Initialize appropriate auth handler
+        if self.provider == "aws":
+            self._auth_handler = AWSAuthHandler(region)
+        elif self.provider == "azure":
+            if not connection_string:
+                raise ValueError("Azure connection string is required")
+            self._auth_handler = AzureAuthHandler(connection_string)
+        else:
+            raise ValueError(f"Unsupported provider: {provider}")
             
-        frozen_credentials = credentials.get_frozen_credentials()
-        
-        self._bedrock_client = boto3.client(
-            "bedrock-runtime",
-            region_name=region,
-            aws_access_key_id=frozen_credentials.access_key,
-            aws_secret_access_key=frozen_credentials.secret_key,
-        )
-        
-        self._model_implementation = get_model_implementation(model_id)
+        # Initialize appropriate model implementation
+        if self.provider == "aws":
+            self._model_implementation = get_model_implementation(model_id)
+        else:
+            self._model_implementation = get_azure_model_implementation(model_id)
+            
+        # Initialize appropriate pricing handler
+        if self.provider == "aws":
+            self._pricing_handler = AWSPricingHandler()
+        else:
+            self._pricing_handler = AzurePricingHandler()
         
         self._aws_credentials_hash = self._hash_credentials(
-            frozen_credentials.access_key,
-            frozen_credentials.secret_key,
-            region
+            self.provider,
+            self.model_id,
+            region if self.provider == "aws" else connection_string
         )
         
         TokenEstimator._SESSIONS_BASE_DIR.mkdir(parents=True, exist_ok=True)
-
         self._session_metrics_file = TokenEstimator._SESSIONS_BASE_DIR / f"session_metrics_{self._aws_credentials_hash}.json"
         self._processed_request_ids = set() # Initialize set for tracking processed request IDs
 
@@ -225,9 +239,9 @@ class TokenEstimator:
             TokenEstimator._dashboard_was_explicitly_stopped = True
             TokenEstimator._dashboard_browser_opened_this_session = False
 
-    def _hash_credentials(self, access_key: str, secret_key: str, region: str) -> str:
-        """Create a hash of AWS credentials for unique session identification."""
-        credential_string = f"{access_key}:{secret_key}:{region}"
+    def _hash_credentials(self, provider: str, model_id: str, identifier: str) -> str:
+        """Create a hash of credentials for unique session identification."""
+        credential_string = f"{provider}:{model_id}:{identifier}"
         return hashlib.sha256(credential_string.encode()).hexdigest()[:8]
 
     def _load_session_metrics(self) -> SessionMetrics:
@@ -271,36 +285,8 @@ class TokenEstimator:
         return self._model_implementation.parse_response(response)
 
     def get_model_cost_per_million(self) -> Dict[str, float]:
-        """
-        Get the cost per million tokens for input and output for the current model in us-east-1 region.
-        
-        Returns:
-            Dict containing input and output costs per million tokens
-        """
-        model_pricing = {
-            "amazon.nova-pro-v1:0": {"input": 0.003, "output": 0.012},  # $0.003/$0.012 per 1K tokens
-            "amazon.nova-micro-v1:0": {"input": 0.000035, "output": 0.00014},  # $0.000035/$0.00014 per 1K tokens
-            "anthropic.claude-3-sonnet-20240229-v1:0": {"input": 0.003, "output": 0.015},  # $0.003/$0.015 per 1K tokens
-            "anthropic.claude-3-haiku-20240307-v1:0": {"input": 0.00025, "output": 0.00125},  # $0.00025/$0.00125 per 1K tokens
-            "anthropic.claude-3-opus-20240229-v1:0": {"input": 0.015, "output": 0.075},  # $0.015/$0.075 per 1K tokens
-            "anthropic.claude-3-5-sonnet-20240620-v1:0": {"input": 0.003, "output": 0.015}, # $0.003/$0.015 per 1K tokens
-            "meta.llama2-13b-chat-v1": {"input": 0.00075, "output": 0.001},  # $0.00075/$0.001 per 1K tokens
-            "meta.llama2-70b-chat-v1": {"input": 0.00195, "output": 0.00256},  # $0.00195/$0.00256 per 1K tokens
-            "ai21.jamba-1-5-large-v1:0": {"input": 0.0125, "output": 0.0125},  # $0.0125 per 1K tokens
-            "cohere.command-r-v1:0": {"input": 0.0005, "output": 0.0015},  # $0.0005/$0.0015 per 1K tokens
-            "cohere.command-r-plus-v1:0": {"input": 0.003, "output": 0.015},  # $0.003/$0.015 per 1K tokens
-            "mistral.mistral-7b-instruct-v0:2": {"input": 0.0002, "output": 0.0006},  # $0.0002/$0.0006 per 1K tokens
-            "mistral.mixtral-8x7b-instruct-v0:1": {"input": 0.0007, "output": 0.0021},  # $0.0007/$0.0021 per 1K tokens
-        }
-        
-        if self.model_id not in model_pricing:
-            raise ValueError(f"Pricing not available for model: {self.model_id}. Please add pricing information in get_model_cost_per_million.")
-            
-        # Convert from per 1K tokens to per 1M tokens
-        return {
-            "input": model_pricing[self.model_id]["input"] * 1000,
-            "output": model_pricing[self.model_id]["output"] * 1000
-        }
+        """Get the cost per million tokens for input and output."""
+        return self._pricing_handler.get_model_cost_per_million(self.model_id)
 
     def calculate_prompt_cost(self, response: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -395,21 +381,25 @@ class TokenEstimator:
 
     def get_response(self, prompt: str, max_tokens: int = 500) -> Dict[str, Any]:
         """
-        Invokes the configured Bedrock model with a prompt, tracks metrics,
-        and returns a dictionary containing the model's answer and metrics for the call.
-        This method uses the model implementation from bedrock_models.py for payload and parsing.
+        Invokes the configured model with a prompt, tracks metrics,
+        and returns a dictionary containing the model's answer and metrics.
         """
-
         payload_body_dict = self._model_implementation.get_payload(prompt, max_tokens)
-
-        raw_bedrock_response_obj = self._bedrock_client.invoke_model(
-            modelId=self.model_id,
-            contentType="application/json", 
-            accept="*/*", 
-            body=json.dumps(payload_body_dict)
-        )
         
-        return raw_bedrock_response_obj
+        if self.provider == "aws":
+            raw_response = self._auth_handler.get_client().invoke_model(
+                modelId=self.model_id,
+                contentType="application/json", 
+                accept="*/*", 
+                body=json.dumps(payload_body_dict)
+            )
+        else:  # Azure
+            raw_response = self._auth_handler.get_client().analyze_text(
+                documents=[{"id": "1", "text": prompt}],
+                **payload_body_dict
+            )
+        
+        return raw_response
 
     def get_session_metrics(self) -> SessionMetrics:
         """

@@ -386,6 +386,50 @@ class DeepSeekModel(BedrockModelBase):
             "latency": latency
         }
 
+class Claude4Model(BedrockModelBase):
+    """Implementation for Anthropic Claude 4 models (Opus, Sonnet)."""
+    
+    def get_payload(self, prompt: str, max_tokens: int = 500) -> Dict[str, Any]:
+        return {
+            "anthropic_version": "bedrock-2024-05-14",
+            "max_tokens": max_tokens,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "temperature": 0.7,
+            "top_p": 0.9
+        }
+    
+    def parse_response(self, response: Dict[str, Any]) -> Dict[str, Any]:
+        raw_body = response["body"].read().decode("utf-8")
+        parsed_response = json.loads(raw_body)
+        
+        # Extract answer
+        answer = ""
+        if "content" in parsed_response:
+            answer = parsed_response.get("content", "")
+        elif "messages" in parsed_response and len(parsed_response["messages"]) > 0:
+            last_message = parsed_response["messages"][-1]
+            if last_message.get("role") == "assistant":
+                answer = last_message.get("content", "")
+        
+        # Extract token counts
+        input_tokens = parsed_response.get("usage", {}).get("input_tokens", 0)
+        output_tokens = parsed_response.get("usage", {}).get("output_tokens", 0)
+        
+        # Extract latency
+        latency = float(response['ResponseMetadata']['HTTPHeaders'].get('x-amzn-bedrock-invocation-latency', 0)) / 1000.0
+        
+        return {
+            "answer": answer,
+            "inputTokens": input_tokens,
+            "outputTokens": output_tokens,
+            "latency": latency
+        }
+
 def get_model_implementation(model_id: str) -> BedrockModelBase:
     """
     Get the appropriate model implementation based on the model ID.
@@ -397,12 +441,21 @@ def get_model_implementation(model_id: str) -> BedrockModelBase:
         BedrockModelBase implementation for the specified model
     """
     model_id_lower = model_id.lower()
+    parts = model_id_lower.split('-')
     
-    if model_id_lower.startswith("anthropic.claude-3"):
-        return Claude3Model()
-    elif model_id_lower.startswith("anthropic.claude-2"):
-        return Claude2Model()
-    elif model_id_lower.startswith("ai21"):
+    if len(parts) >= 2 and parts[0] == 'anthropic' and parts[1] == 'claude':
+        version = None
+        for part in parts:
+            if part.isdigit():
+                version = int(part)
+                break        
+        if version == 4:
+            return Claude4Model()
+        elif version == 3:
+            return Claude3Model()
+        elif version == 2:
+            return Claude2Model()
+    if model_id_lower.startswith("ai21"):
         return AI21Model()
     elif model_id_lower.startswith("cohere"):
         return CohereModel()

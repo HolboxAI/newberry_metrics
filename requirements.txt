@@ -7,3 +7,6 @@ matplotlib
 pandas
 streamlit
 plotly
+azure-core
+azure-ai-textanalytics
+azure-identity
