@@ -588,6 +588,7 @@ if not df.empty:
             </p>
             <p style='color:#2C3E50;'><b>Why use it?</b><br>
             <ul style='color:#2C3E50; list-style-type: none; padding-left: 0;'>
+            <li>🔹 Welcome to Newberry Metrics!</li>
             <li>🔹 Measure model cost per million tokens</li>
             <li>🔹 Get cost of a specific prompt or session</li>
             <li>🔹 Track latency and concurrency in real time</li>
