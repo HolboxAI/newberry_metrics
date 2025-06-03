@@ -512,7 +512,6 @@ if not df.empty:
             {'selector': 'th', 'props': [
                 ('background-color', '#6C5CE7'), ('color', 'white'), ('font-weight', 'bold'),
                 ('text-align', 'center'), ('border', '1px solid #ddd'), ('padding', '8px'),
-                # change 1
                 ('position', 'sticky'), ('top', '0'), ('z-index', '1')
                 ]},
                 {'selector': 'td', 'props': [
@@ -563,17 +562,14 @@ if not df.empty:
 
             if show_all:
                 styled_content = df_display.style.format(active_formats).set_table_styles(table_styles).hide(axis="index")
-                # change 2
                 st.markdown('<div class="scrollable-table">' + styled_content.to_html() + '</div>', unsafe_allow_html=True)
             else:
                 df_head = df_display.head(10)
                 styled_content = df_head.style.format(active_formats).set_table_styles(table_styles).hide(axis="index")
-                # change 3
                 st.markdown('<div class="scrollable-table">' + styled_content.to_html() + '</div>', unsafe_allow_html=True)
                 st.markdown(f"... {len(df_display) - 10} more rows hidden ...")
         else:
             styled_content = df_display.style.format(active_formats).set_table_styles(table_styles).hide(axis="index")
-            # change 4
             st.markdown('<div class="scrollable-table">' + styled_content.to_html() + '</div>', unsafe_allow_html=True)
             
     with right_col:
