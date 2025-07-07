@@ -511,7 +511,8 @@ if not df.empty:
         table_styles = [
             {'selector': 'th', 'props': [
                 ('background-color', '#6C5CE7'), ('color', 'white'), ('font-weight', 'bold'),
-                ('text-align', 'center'), ('border', '1px solid #ddd'), ('padding', '8px')
+                ('text-align', 'center'), ('border', '1px solid #ddd'), ('padding', '8px'),
+                ('position', 'sticky'), ('top', '0'), ('z-index', '1')
                 ]},
                 {'selector': 'td', 'props': [
                 ('background-color', '#FAFAFA'), ('color', '#2B2D42'), ('text-align', 'center'),
@@ -524,6 +525,28 @@ if not df.empty:
                 ('background-color', '#E0D7F7 !important'), ('color', '#6C5CE7 !important')
             ]}
         ]
+
+        # Add CSS for scrollable table container
+        st.markdown("""
+        <style>
+            .scrollable-table {
+                max-height: 500px;
+                overflow-y: auto;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                margin: 10px 0;
+            }
+            .scrollable-table table {
+                width: 100%;
+                border-collapse: collapse;
+            }
+            .scrollable-table thead th {
+                position: sticky;
+                top: 0;
+                z-index: 1;
+            }
+        </style>
+        """, unsafe_allow_html=True)
 
         # --- Logic for displaying all/less data ---
         if len(df_display) > 10:
@@ -539,15 +562,15 @@ if not df.empty:
 
             if show_all:
                 styled_content = df_display.style.format(active_formats).set_table_styles(table_styles).hide(axis="index")
-                st.markdown(styled_content.to_html(), unsafe_allow_html=True)
+                st.markdown('<div class="scrollable-table">' + styled_content.to_html() + '</div>', unsafe_allow_html=True)
             else:
                 df_head = df_display.head(10)
                 styled_content = df_head.style.format(active_formats).set_table_styles(table_styles).hide(axis="index")
-                st.markdown(styled_content.to_html(), unsafe_allow_html=True)
+                st.markdown('<div class="scrollable-table">' + styled_content.to_html() + '</div>', unsafe_allow_html=True)
                 st.markdown(f"... {len(df_display) - 10} more rows hidden ...")
         else:
             styled_content = df_display.style.format(active_formats).set_table_styles(table_styles).hide(axis="index")
-            st.markdown(styled_content.to_html(), unsafe_allow_html=True)
+            st.markdown('<div class="scrollable-table">' + styled_content.to_html() + '</div>', unsafe_allow_html=True)
             
     with right_col:
         if page_icon_path.exists():
@@ -561,6 +584,7 @@ if not df.empty:
             </p>
             <p style='color:#2C3E50;'><b>Why use it?</b><br>
             <ul style='color:#2C3E50; list-style-type: none; padding-left: 0;'>
+            <li>🔹 Welcome to Newberry Metrics!</li>
             <li>🔹 Measure model cost per million tokens</li>
             <li>🔹 Get cost of a specific prompt or session</li>
             <li>🔹 Track latency and concurrency in real time</li>
@@ -570,7 +594,7 @@ if not df.empty:
             </ul>
             </p>
             <p style='color:#2C3E50;'>
-            <b>Version:</b> 1.0.5<br>
+            
             </p>
             </div>
             """,
