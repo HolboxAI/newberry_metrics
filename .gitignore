@@ -20,8 +20,6 @@ __pycache__/
 # Ignore macOS / Windows metadata
 .DS_Store
 Thumbs.db
-dist/
-build/
 # Ignore logs
 *.log
 

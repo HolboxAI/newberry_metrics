@@ -27,3 +27,10 @@ class AzureOpenAIModel(AzureModelBase):
             "outputTokens": response.usage.completion_tokens,
             "latency": response.usage.total_tokens / 1000.0  # Approximate latency as it's not present in the response object as bedrock
         }
+
+
+def get_azure_model_implementation(model_id: str) -> AzureModelBase:
+    """Get the appropriate Azure model implementation based on model ID."""
+    # For now, default to AzureOpenAIModel for all Azure models
+    # This can be expanded to support different Azure model types
+    return AzureOpenAIModel()
