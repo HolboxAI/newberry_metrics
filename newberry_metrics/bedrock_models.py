@@ -442,8 +442,7 @@ def get_model_implementation(model_id: str) -> BedrockModelBase:
     """
     model_id_lower = model_id.lower()
     parts = model_id_lower.split('-')
-    
-    if len(parts) >= 2 and parts[0] == 'anthropic' and parts[1] == 'claude':
+    if len(parts) >= 2 and 'anthropic' in parts[0] and 'claude' in parts[0]:
         version = None
         for part in parts:
             if part.isdigit():
